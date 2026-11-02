@@ -5,6 +5,7 @@ import { Hex, corner, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex 
 import type { Theme } from '../themes/types';
 import { BASE_TOP, buildTileGeometry } from './geom';
 import { makeGrainTexture } from './wood';
+import { Ambient, ERA_THRESHOLDS, Traffic, Ufo } from './ambient';
 import type { Quality } from '../save';
 
 const QUALITY: Record<Quality, { ratio: number; shadow: number; aa: boolean }> = {
@@ -20,8 +21,10 @@ export interface BoardInput {
   pop: { hex: Hex; t: number } | null;
 }
 
-const ELEVATION = THREE.MathUtils.degToRad(45);
-const FOV = 38;
+// 鏡頭：拉近、從約 40 度斜上方往前看，遠處淡進霧裡，像在看一片風景
+const ELEVATION = THREE.MathUtils.degToRad(40);
+const FOV = 42;
+const START_DISTANCE = 8.5;
 const GHOST_LIFT = 0.3;
 
 export class Board3D {
@@ -42,14 +45,39 @@ export class Board3D {
   private pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -BASE_TOP);
 
   target = new THREE.Vector3(0, BASE_TOP, 0);
-  distance = 9;
-  azimuth = Math.PI / 6; // 斜角看過去，比較有立體模型感
+  distance = START_DISTANCE;
+  azimuth = 0;
   topInset = 0;
   bottomInset = 0;
   private w = 1;
   private h = 1;
 
+  private quality: Quality;
+  private ambient: Ambient | null = null;
+  private traffic: Traffic | null = null;
+  private ufo: Ufo | null = null;
+
+  /** 依聚落邊數算出目前的時代（0 起算） */
+  static eraOf(state: GameState): number {
+    let edges = 0;
+    for (const tile of Object.values(state.board)) for (const e of tile.edges) if (e === Terrain.Settlement) edges++;
+    return ERA_THRESHOLDS.filter((n) => edges >= n).length;
+  }
+
+  /** 有雲或鳥在動，需要每個畫面都重畫 */
+  get animated(): boolean {
+    return !!this.ambient?.active;
+  }
+
+  /** 推進雲和鳥的動畫（秒） */
+  tick(time: number, dt: number) {
+    this.ambient?.update(time, dt, this.target);
+    this.traffic?.update(time, dt, this.target);
+    this.ufo?.update(time, dt, this.target);
+  }
+
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
+    this.quality = quality;
     const q = QUALITY[quality];
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: q.aa, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.ratio));
@@ -91,6 +119,16 @@ export class Board3D {
     this.highlightMesh.count = 0;
     this.highlightMesh.frustumCulled = false;
     this.scene.add(this.highlightMesh, this.markers);
+    this.scene.fog = new THREE.Fog(theme.sky[1], 10, 30);
+
+    // 雲和鳥（省電模式不放）
+    if (theme.ambient && quality !== 'low') {
+      this.ambient = new Ambient(theme.ambient, q.shadow > 0);
+      this.scene.add(this.ambient.group);
+      this.traffic = new Traffic();
+      this.ufo = new Ufo();
+      this.scene.add(this.traffic.group, this.ufo.group);
+    }
 
     this.resize();
   }
@@ -103,6 +141,7 @@ export class Board3D {
 
   dispose() {
     this.renderer.dispose();
+    this.art?.renderer.dispose();
   }
 
   resize() {
@@ -129,6 +168,9 @@ export class Board3D {
     );
     cam.lookAt(this.target);
     cam.updateProjectionMatrix();
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = this.distance * 1.1;
+    fog.far = this.distance * 2.6;
 
     // 陽光跟著鏡頭目標移動，陰影範圍隨縮放調整
     const span = this.distance * 0.9;
@@ -159,7 +201,7 @@ export class Board3D {
   }
 
   zoom(factor: number) {
-    this.distance = THREE.MathUtils.clamp(this.distance / factor, 3.5, 40);
+    this.distance = THREE.MathUtils.clamp(this.distance / factor, 4, 30);
     this.updateCamera();
   }
 
@@ -176,12 +218,61 @@ export class Board3D {
       minZ = Math.min(minZ, p.y); maxZ = Math.max(maxZ, p.y);
     }
     this.target.set((minX + maxX) / 2, BASE_TOP, (minZ + maxZ) / 2);
-    const radius = Math.max(maxX - minX, maxZ - minZ) / 2 + 2.2;
-    const visibleH = this.h - this.topInset - this.bottomInset;
-    const aspect = Math.min(this.w / Math.max(1, visibleH), 1);
-    const fit = radius / Math.tan(THREE.MathUtils.degToRad(FOV / 2)) / aspect;
-    this.distance = THREE.MathUtils.clamp(fit * (this.h / Math.max(1, visibleH)) * 0.62, 14, 40);
+    // 不把整張地圖塞進畫面，只稍微拉遠，保持近看風景的感覺
+    const radius = Math.max(maxX - minX, maxZ - minZ) / 2;
+    this.distance = THREE.MathUtils.clamp(START_DISTANCE + radius * 0.6, START_DISTANCE, 16);
     this.updateCamera();
+  }
+
+  // ── 卡牌插圖：用同一套模型、同樣的鏡頭角度拍單一地塊 ──
+
+  private art: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; holder: THREE.Group } | null = null;
+  private artCache = new Map<string, HTMLCanvasElement>();
+
+  tileArt(edges: readonly Terrain[], seed: number, w: number, h: number): HTMLCanvasElement {
+    const az = Math.round(this.azimuth * 20) / 20;
+    const cacheKey = `${edges.join('')}|${seed}|${az}|${w}x${h}`;
+    const hit = this.artCache.get(cacheKey);
+    if (hit) return hit;
+
+    if (!this.art) {
+      const renderer = new THREE.WebGLRenderer({ antialias: this.quality !== 'low', alpha: true, preserveDrawingBuffer: true });
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight('#fff4e0', '#8a7560', 1.6));
+      const sun = new THREE.DirectionalLight('#ffe9cc', 2.2);
+      sun.position.set(-4, 9, 3);
+      scene.add(sun);
+      const holder = new THREE.Group();
+      scene.add(holder);
+      this.art = { renderer, scene, camera: new THREE.PerspectiveCamera(30, 1, 0.1, 50), holder };
+    }
+    const { renderer, scene, camera, holder } = this.art;
+    renderer.setSize(w, h, false);
+    for (const c of [...holder.children]) {
+      holder.remove(c);
+      this.disposeGroup(c as THREE.Group);
+    }
+    holder.add(this.makeTile(edges, seed, false));
+
+    camera.aspect = w / h;
+    const d = 3.7;
+    const ce = Math.cos(ELEVATION);
+    const target = new THREE.Vector3(0, BASE_TOP, 0);
+    camera.position.set(Math.sin(az) * ce * d, BASE_TOP + Math.sin(ELEVATION) * d, Math.cos(az) * ce * d);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    out.getContext('2d')!.drawImage(renderer.domElement, 0, 0);
+    if (this.artCache.size > 60) this.artCache.clear();
+    this.artCache.set(cacheKey, out);
+    return out;
   }
 
   /** 格子中心的螢幕座標（測試用） */
@@ -238,6 +329,12 @@ export class Board3D {
       this.scene.remove(g);
       this.disposeGroup(g);
       this.tiles.delete(k);
+    }
+
+    // 世界發展到新時代，天空多出交通工具
+    if (this.traffic) {
+      const era = Board3D.eraOf(state);
+      if (era > this.traffic.era) this.traffic.setEra(era, this.target);
     }
 
     // 落下動畫

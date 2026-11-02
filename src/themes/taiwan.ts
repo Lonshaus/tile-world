@@ -153,6 +153,7 @@ export const taiwan: Theme = {
   heights: [0.05, 0.035, 0.015, 0.05, 0.08],
   base: '#a77b4f',
   glyphs: ['tree', 'rice', 'wave', 'house', 'tea'],
+  ambient: { clouds: true, birds: true },
   decor(terrain, rand) {
     switch (terrain) {
       case Terrain.Green: {

@@ -297,19 +297,100 @@ export function drawWoodPanel(ctx: Ctx, w: number, h: number, seed: number, radi
   ctx.restore();
 }
 
-export function drawCard(canvas: HTMLCanvasElement, theme: Theme, edges: readonly Terrain[], seed: number) {
+// ── 撲克牌式的卡牌：上半部插畫窗，下半部卡名與說明 ──
+
+export interface CardText {
+  type: string;
+  name: string;
+  rows: { color: string; label: string; value: string }[];
+}
+
+export function drawPlayingCard(canvas: HTMLCanvasElement, art: CanvasImageSource, sky: [string, string], text: CardText, seed: number) {
   const ctx = canvas.getContext('2d')!;
   const { width: w, height: h } = canvas;
+  const u = w / 100; // 以卡寬 100 為單位排版
   ctx.clearRect(0, 0, w, h);
-  drawWoodPanel(ctx, w, h, seed);
-  drawCarvedHex(ctx, theme, edges, w / 2, h / 2, w * 0.4, seed);
-  // 亮光漆的反光：上方一道柔和的光
-  const gloss = ctx.createLinearGradient(0, 0, 0, h);
-  gloss.addColorStop(0, 'rgba(255,248,230,0.28)');
-  gloss.addColorStop(0.35, 'rgba(255,248,230,0.05)');
-  gloss.addColorStop(1, 'rgba(0,0,0,0.12)');
+  drawWoodPanel(ctx, w, h, seed, 8 * u);
+
+  // 內框刻線
+  engrave(ctx, w, () => {
+    ctx.beginPath();
+    roundRect(ctx, 4 * u, 4 * u, w - 8 * u, h - 8 * u, 5 * u);
+  });
+
+  // 插畫窗
+  const ax = 7 * u;
+  const ay = 7 * u;
+  const aw = w - 14 * u;
+  const ah = h * 0.5;
   ctx.save();
-  roundRect(ctx, 0, 0, w, h, w * 0.12);
+  roundRect(ctx, ax, ay, aw, ah, 3 * u);
+  ctx.clip();
+  const g = ctx.createLinearGradient(0, ay, 0, ay + ah);
+  g.addColorStop(0, sky[0]);
+  g.addColorStop(1, sky[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(ax, ay, aw, ah);
+  ctx.drawImage(art, ax, ay, aw, ah);
+  // 內陰影：窗框凹進去
+  ctx.shadowColor = 'rgba(25,12,0,0.7)';
+  ctx.shadowBlur = 3 * u;
+  ctx.shadowOffsetX = 0.8 * u;
+  ctx.shadowOffsetY = 1.2 * u;
+  ctx.lineWidth = 3 * u;
+  ctx.strokeStyle = 'rgba(25,12,0,0.6)';
+  roundRect(ctx, ax - 1.5 * u, ay - 1.5 * u, aw + 3 * u, ah + 3 * u, 4 * u);
+  ctx.stroke();
+  ctx.restore();
+
+  // 卡名
+  let y = ay + ah + 11 * u;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const font = (size: number, weight = 700) => `${weight} ${size * u}px system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Hiragino Sans", sans-serif`;
+  const carvedText = (s: string, x: number, yy: number, size: number, weight = 700, maxW = w - 16 * u) => {
+    ctx.font = font(size, weight);
+    ctx.fillStyle = 'rgba(255,238,205,0.55)';
+    ctx.fillText(s, x + 0.35 * u, yy + 0.45 * u, maxW);
+    ctx.fillStyle = '#3a2412';
+    ctx.fillText(s, x, yy, maxW);
+  };
+  carvedText(text.name, w / 2, y, 10);
+
+  // 卡片種類
+  y += 9 * u;
+  carvedText(text.type, w / 2, y, 6, 600);
+  engrave(ctx, w, () => {
+    ctx.beginPath();
+    ctx.moveTo(16 * u, y + 5 * u);
+    ctx.lineTo(w - 16 * u, y + 5 * u);
+  });
+
+  // 說明：地形組成
+  y += 13 * u;
+  ctx.textAlign = 'left';
+  for (const row of text.rows) {
+    ctx.fillStyle = row.color;
+    ctx.strokeStyle = 'rgba(40,20,5,0.6)';
+    ctx.lineWidth = 0.6 * u;
+    ctx.beginPath();
+    ctx.arc(15 * u, y, 3 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    carvedText(row.label, 22 * u, y, 7.5, 600, 50 * u);
+    ctx.textAlign = 'right';
+    carvedText(row.value, w - 12 * u, y, 7.5, 700, 22 * u);
+    y += 10.5 * u;
+  }
+
+  // 亮光漆反光
+  const gloss = ctx.createLinearGradient(0, 0, 0, h);
+  gloss.addColorStop(0, 'rgba(255,248,230,0.22)');
+  gloss.addColorStop(0.4, 'rgba(255,248,230,0.03)');
+  gloss.addColorStop(1, 'rgba(0,0,0,0.1)');
+  ctx.save();
+  roundRect(ctx, 0, 0, w, h, 8 * u);
   ctx.clip();
   ctx.fillStyle = gloss;
   ctx.fillRect(0, 0, w, h);

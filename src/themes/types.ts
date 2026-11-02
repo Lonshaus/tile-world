@@ -63,6 +63,8 @@ export interface Theme {
   base: string;
   /** 卡牌上五種地形的刻線圖案 */
   glyphs: [Glyph, Glyph, Glyph, Glyph, Glyph];
+  /** 天空中飄過的雲和飛過的鳥 */
+  ambient?: { clouds: boolean; birds: boolean };
   /** 每個扇形的 3D 裝飾 */
   decor(terrain: Terrain, rand: Rand): DecorPiece[];
 }

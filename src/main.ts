@@ -12,10 +12,10 @@ import {
   tilesLeft,
 } from './game';
 import { Hex, key } from './hex';
-import { LANGS, Lang, detectLang, setLang, t } from './i18n';
+import { LANGS, Lang, StringKey, detectLang, setLang, t } from './i18n';
 import { attachInput } from './input';
 import { Board3D } from './three/board3d';
-import { drawCard, drawCarvedHex, drawWoodPanel } from './carved';
+import { CardText, drawCarvedHex, drawPlayingCard, drawWoodPanel } from './carved';
 import * as save from './save';
 import { THEMES, Theme } from './themes';
 import { confirmDialog, h, toast } from './dom';
@@ -33,6 +33,24 @@ function mount(el: HTMLElement, cleanup?: () => void) {
   cleanupScreen?.();
   cleanupScreen = cleanup ?? null;
   app.replaceChildren(el);
+}
+
+// ───────────────────────── 卡牌 ─────────────────────────
+
+const CARD_W = 330;
+const CARD_H = 462; // 撲克牌比例 5:7
+
+/** 卡名與說明：依地形邊數由多到少 */
+function cardText(theme: Theme, edges: readonly number[]): CardText {
+  const counts = [0, 0, 0, 0, 0];
+  for (const e of edges) counts[e]++;
+  const order = [0, 1, 2, 3, 4].filter((i) => counts[i] > 0).sort((a, b) => counts[b] - counts[a]);
+  const name = (i: number) => t(`terrain.${theme.id}.${i}` as StringKey);
+  return {
+    type: t('card.tile'),
+    name: order.slice(0, 2).map(name).join('・'),
+    rows: order.map((i) => ({ color: theme.terrain[i], label: name(i), value: t('card.edges', { n: counts[i] }) })),
+  };
 }
 
 // ───────────────────────── 主選單 ─────────────────────────
@@ -247,14 +265,18 @@ function startGame(theme: Theme, existing: GameState | null) {
       if (tt >= 1) pop = null;
     }
     const card = state.hand[selected];
+    const sec = now / 1000;
+    board.tick(sec, lastFrame ? Math.min(0.1, sec - lastFrame) : 0);
+    lastFrame = sec;
     board.render({
       state,
       highlights: !viewingOnly && card && !preview ? placeableCells(state) : [],
       preview: preview && card ? { hex: preview, edges: rotateEdges(card.edges, rot), id: `${key(preview)}|${card.id}|${rot}` } : null,
       pop: popT,
     });
-    if (pop) requestRender();
+    if (pop || board.animated) requestRender();
   }
+  let lastFrame = 0;
 
   function onResize() {
     board.resize();
@@ -293,8 +315,19 @@ function startGame(theme: Theme, existing: GameState | null) {
     onRotate(da) {
       board.rotate(da);
       requestRender();
+      scheduleHandRedraw();
     },
   });
+
+  // 鏡頭轉動時，卡牌插圖跟著換角度（每個畫面最多重畫一次）
+  let handRaf = 0;
+  function scheduleHandRedraw() {
+    if (handRaf) return;
+    handRaf = requestAnimationFrame(() => {
+      handRaf = 0;
+      refreshUI();
+    });
+  }
 
   function selectCard(i: number) {
     if (i === selected) {
@@ -328,7 +361,10 @@ function startGame(theme: Theme, existing: GameState | null) {
     rot = 0;
     selected = Math.min(selected, Math.max(0, state.hand.length - 1));
     vibrate(res.perfect ? 40 : 15);
-    if (res.perfect) toast(t('toast.perfect', { n: res.points }));
+    const eraBefore = Board3D.eraOf({ ...state, board: Object.fromEntries(Object.entries(state.board).filter(([k]) => k !== key(hex))) });
+    const eraAfter = Board3D.eraOf(state);
+    if (theme.ambient && eraAfter > eraBefore) toast(t(`toast.era${eraAfter}` as StringKey));
+    else if (res.perfect) toast(t('toast.perfect', { n: res.points }));
     else if (res.newStation) toast(t('toast.station', { n: stationOf(state).station }));
     if (state.over) {
       const isBest = save.submitScore(theme.id, state.score);
@@ -363,8 +399,10 @@ function startGame(theme: Theme, existing: GameState | null) {
 
     handEl.replaceChildren(
       ...state.hand.map((c, i) => {
-        const cv = h('canvas', { class: 'card-canvas', width: 216, height: 288 });
-        drawCard(cv, theme, rotateEdges(c.edges, i === selected ? rot : 0), c.id * 7919);
+        const cv = h('canvas', { class: 'card-canvas', width: CARD_W, height: CARD_H });
+        const edges = rotateEdges(c.edges, i === selected ? rot : 0);
+        const art = board.tileArt(edges, c.id * 7919, CARD_W, Math.round(CARD_H * 0.5));
+        drawPlayingCard(cv, art, theme.sky, cardText(theme, c.edges), c.id * 7919);
         return h(
           'button',
           { class: `card${i === selected ? ' selected' : ''}`, onclick: () => selectCard(i) },
@@ -447,6 +485,7 @@ function startGame(theme: Theme, existing: GameState | null) {
   if (location.search.includes('debug')) {
     (window as unknown as Record<string, unknown>).__debug = {
       state,
+      board,
       cells: () => placeableCells(state).map((c) => board.hexToScreen(c)),
     };
   }
