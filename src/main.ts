@@ -15,6 +15,7 @@ import { Hex, key } from './hex';
 import { LANGS, Lang, StringKey, detectLang, setLang, t } from './i18n';
 import { attachInput } from './input';
 import { Board3D } from './three/board3d';
+import { DealFx } from './dealfx';
 import { CardText, drawCardBack, drawCarvedHex, drawPlayingCard, drawWoodPanel } from './carved';
 import * as save from './save';
 import { THEMES, Theme } from './themes';
@@ -53,8 +54,8 @@ function cardText(theme: Theme, edges: readonly number[]): CardText {
   };
 }
 
-const DEAL_DURATION = 1100;
-const DEAL_STAGGER = 150;
+const DEAL_STAGGER = 0.15; // 秒
+const dealFx = new DealFx();
 
 let backImage: HTMLCanvasElement | null = null;
 function cardBackImage(): HTMLCanvasElement {
@@ -344,7 +345,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     },
   });
 
-  const dealtAt = new Map<number, number>();
+  const dealt = new Set<number>();
 
   // 鏡頭轉動時，卡牌插圖跟著換角度（每個畫面最多重畫一次）
   let handRaf = 0;
@@ -426,6 +427,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     actionsEl.hidden = !preview;
 
     let dealIndex = 0;
+    const toDeal: (() => void)[] = [];
     handEl.replaceChildren(
       ...state.hand.map((c, i) => {
         const front = h('canvas', { class: 'card-face', width: CARD_W, height: CARD_H });
@@ -435,23 +437,26 @@ function startGame(theme: Theme, existing: GameState | null) {
         const back = h('canvas', { class: 'card-face card-back', width: CARD_W, height: CARD_H });
         back.getContext('2d')!.drawImage(cardBackImage(), 0, 0);
         const inner = h('div', { class: 'card-inner' }, front, back);
-
-        // 發牌動畫：背面朝上滑進來，再翻成正面；開局的幾張依序發出。
-        // 動畫途中畫面重繪時，用負的延遲接著播，不會從頭重來
-        const now = performance.now();
-        if (!dealtAt.has(c.id)) dealtAt.set(c.id, now + dealIndex++ * DEAL_STAGGER);
-        const start = dealtAt.get(c.id)!;
-        if (now - start < DEAL_DURATION) {
-          inner.classList.add('deal');
-          inner.style.animationDelay = `${start - now}ms`;
-        }
-        return h(
+        const btn = h(
           'button',
           { class: `card${i === selected ? ' selected' : ''}`, onclick: () => selectCard(i) },
           inner,
         );
+
+        // 發牌動畫：新牌先藏起來，由 WebGL 播完「滑進來、從左下角掀開」後再顯示
+        if (!dealt.has(c.id)) {
+          dealt.add(c.id);
+          const delay = dealIndex++ * DEAL_STAGGER;
+          inner.style.visibility = 'hidden';
+          toDeal.push(() => dealFx.play(c.id, btn, front, back, delay, () => refreshUI()));
+        } else if (dealFx.isDealing(c.id)) {
+          inner.style.visibility = 'hidden';
+        }
+        return btn;
       }),
     );
+    // 等牌排好位置再開始播
+    toDeal.forEach((f) => f());
     handEl.hidden = viewingOnly;
     requestRender();
   }
@@ -528,6 +533,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     (window as unknown as Record<string, unknown>).__debug = {
       state,
       board,
+      dealFx,
       cells: () => placeableCells(state).map((c) => board.hexToScreen(c)),
     };
   }

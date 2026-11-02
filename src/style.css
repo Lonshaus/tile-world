@@ -375,31 +375,14 @@ button {
 .card-back {
   transform: rotate3d(1, 1, 0, 180deg);
 }
-/* 發牌：背面朝上從右邊滑進來，停一下，再像用手從左下角掀開一樣翻成正面
-   （沿著左上到右下的對角線翻轉，左下角先翹起來翻向右上） */
-.card-inner.deal {
-  animation: deal 1.1s backwards;
-}
-@keyframes deal {
-  /* 每個階段都用同樣的變形順序，角度才會照設定的方向轉（左下角先翹起來） */
-  0% {
-    transform: translate(170%, 25%) rotate(14deg) scale(1) rotate3d(1, 1, 0, -180deg);
-    animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
-  }
-  40% {
-    transform: translate(0, 0) rotate(0deg) scale(1) rotate3d(1, 1, 0, -180deg);
-  }
-  50% {
-    transform: translate(0, 0) rotate(0deg) scale(1) rotate3d(1, 1, 0, -180deg);
-    animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1);
-  }
-  80% {
-    transform: translate(0, -6%) rotate(0deg) scale(1.06) rotate3d(1, 1, 0, 15deg);
-    animation-timing-function: ease-out;
-  }
-  100% {
-    transform: translate(0, 0) rotate(0deg) scale(1) rotate3d(1, 1, 0, 0deg);
-  }
+/* 發牌特效用的 WebGL 畫布，蓋在整個畫面上但不擋操作 */
+.deal-fx {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ── 對話框 ── */
