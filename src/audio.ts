@@ -1,117 +1,108 @@
 // 音樂與音效：全部用 Web Audio 即時合成，不用載入音檔。
-// 音樂是輕柔的生成式配樂，每個主題有自己的音階、和弦、樂器與環境聲；
-// 音效用木頭敲擊、撥弦、鐘聲，跟木製桌遊的質感搭配。
+// 每個主題有自己的曲風、節奏和樂器，音色都偏溫暖、中低音，不用高頻的叮叮聲。
+//   浮島：3/4 拍的尼龍吉他分解和弦，像在雲上慢慢晃
+//   台灣街景：Lo-fi，電鋼琴和弦 + 輕刷鼓 + 低音，加上像竹笛的旋律
+//   海底：沒有節奏，低沉的弦樂長音與緩慢起伏的和聲，背景有海浪
+//   太空：低音持續音 + 柔和的脈衝琶音帶回聲，慢慢變化
 
-type Lead = 'harp' | 'zheng' | 'bell' | 'glass';
-type Ambience = 'wind' | 'waves' | 'none';
+type Arrangement = 'floating' | 'taiwan' | 'ocean' | 'space';
 
 interface MusicStyle {
+  arrangement: Arrangement;
   bpm: number;
-  /** 主音（MIDI 音高） */
+  /** 一小節幾個八分音符 */
+  stepsPerBar: number;
+  /** 主音（MIDI 音高，約在 C3 附近） */
   root: number;
-  /** 旋律音階（相對主音的半音數） */
+  /** 旋律／提示音用的音階（相對主音的半音數） */
   scale: number[];
   /** 和弦進行（相對主音的半音數） */
   chords: number[][];
   /** 每個和弦幾小節 */
   bars: number;
-  lead: Lead;
-  pad: OscillatorType;
-  padCutoff: number;
-  /** 每個八分音符出現旋律的機率 */
-  density: number;
-  reverb: number;
-  ambience: Ambience;
 }
 
 const STYLES: Record<string, MusicStyle> = {
-  // 浮島：F 大調五聲音階，豎琴般的撥弦、溫暖的和弦、微風
   floating: {
-    bpm: 72,
-    root: 53,
+    arrangement: 'floating',
+    bpm: 84,
+    stepsPerBar: 6,
+    root: 53, // F3
+    scale: [0, 2, 4, 7, 9],
+    chords: [
+      [0, 4, 7, 11, 12],
+      [-3, 0, 4, 7, 9],
+      [-7, -3, 0, 4, 5],
+      [-5, -1, 2, 7, 7],
+    ],
+    bars: 2,
+  },
+  taiwan: {
+    arrangement: 'taiwan',
+    bpm: 76,
+    stepsPerBar: 8,
+    root: 50, // D3
+    scale: [0, 2, 4, 7, 9],
+    chords: [
+      [0, 4, 9, 14],
+      [-3, 0, 4, 7],
+      [-7, -3, 0, 4],
+      [-5, 0, 2, 5],
+    ],
+    bars: 1,
+  },
+  ocean: {
+    arrangement: 'ocean',
+    bpm: 54,
+    stepsPerBar: 8,
+    root: 51, // E♭3
     scale: [0, 2, 4, 7, 9],
     chords: [
       [0, 4, 7, 11],
-      [-3, 0, 4, 7],
+      [-3, 0, 3, 7],
       [-7, -3, 0, 4],
-      [-5, -1, 2, 7],
-    ],
-    bars: 2,
-    lead: 'harp',
-    pad: 'triangle',
-    padCutoff: 1400,
-    density: 0.42,
-    reverb: 0.35,
-    ambience: 'wind',
-  },
-  // 台灣街景：D 宮調五聲音階，像古箏的撥弦帶一點滑音，節奏慢、留白多
-  taiwan: {
-    bpm: 66,
-    root: 50,
-    scale: [0, 2, 4, 7, 9],
-    chords: [
-      [0, 7, 14, 16],
-      [-3, 4, 9, 12],
-      [-5, 2, 7, 11],
-      [-8, -1, 4, 7],
-    ],
-    bars: 2,
-    lead: 'zheng',
-    pad: 'sine',
-    padCutoff: 1100,
-    density: 0.36,
-    reverb: 0.3,
-    ambience: 'none',
-  },
-  // 海底：E♭ 利地亞調，慢、深，鐘聲般的音色加長延遲，背景有海浪起伏
-  ocean: {
-    bpm: 56,
-    root: 51,
-    scale: [0, 2, 4, 6, 7, 9, 11],
-    chords: [
-      [0, 4, 7, 11, 14],
-      [-3, 0, 4, 7, 10],
-      [-7, -3, 0, 4, 9],
-      [-5, -1, 2, 6, 9],
-    ],
-    bars: 2,
-    lead: 'bell',
-    pad: 'sine',
-    padCutoff: 900,
-    density: 0.28,
-    reverb: 0.5,
-    ambience: 'waves',
-  },
-  // 太空：A 大調高音區，玻璃般慢慢浮出來的音、很長的殘響、低音持續音
-  space: {
-    bpm: 50,
-    root: 45,
-    scale: [0, 2, 4, 7, 9, 11],
-    chords: [
-      [0, 7, 11, 14, 16],
-      [-3, 4, 7, 11, 14],
-      [-7, 0, 4, 9, 11],
-      [-5, 2, 7, 9, 14],
+      [-5, -2, 2, 5],
     ],
     bars: 4,
-    lead: 'glass',
-    pad: 'sawtooth',
-    padCutoff: 700,
-    density: 0.22,
-    reverb: 0.6,
-    ambience: 'none',
+  },
+  space: {
+    arrangement: 'space',
+    bpm: 64,
+    stepsPerBar: 8,
+    root: 45, // A2
+    scale: [0, 3, 5, 7, 10],
+    chords: [
+      [0, 3, 7, 10, 14],
+      [-4, 0, 3, 7, 12],
+      [3, 7, 10, 14, 15],
+      [-2, 2, 5, 9, 14],
+    ],
+    bars: 4,
   },
 };
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+
+type Keep = <T extends AudioScheduledSourceNode>(n: T) => T;
 
 class Song {
   readonly out: GainNode;
   private timer = 0;
   private next = 0;
   private step = 0;
-  private last = 7; // 上一個旋律音（音階索引）
+  private melodyIdx = 5;
+  private melodyBusyUntil = 0;
   private nodes: AudioScheduledSourceNode[] = [];
+  private echo: GainNode | null = null;
+  private keepFn: Keep = (n) => {
+    this.nodes.push(n);
+    n.onended = () => {
+      const i = this.nodes.indexOf(n);
+      if (i >= 0) this.nodes.splice(i, 1);
+    };
+    return n;
+  };
 
   constructor(
     private a: AudioEngine,
@@ -123,7 +114,7 @@ class Song {
     this.out.connect(a.musicBus!);
     this.out.gain.setTargetAtTime(1, ctx.currentTime, 1.2);
     this.next = ctx.currentTime + 0.3;
-    this.startAmbience();
+    this.setup();
     this.timer = window.setInterval(() => this.schedule(), 60);
     this.schedule();
   }
@@ -133,7 +124,7 @@ class Song {
     clearInterval(this.timer);
     this.out.gain.cancelScheduledValues(ctx.currentTime);
     this.out.gain.setTargetAtTime(0, ctx.currentTime, 0.5);
-    const nodes = this.nodes;
+    const nodes = [...this.nodes];
     setTimeout(() => {
       nodes.forEach((n) => {
         try {
@@ -146,16 +137,47 @@ class Song {
     }, 3000);
   }
 
-  private keep<T extends AudioScheduledSourceNode>(n: T): T {
-    this.nodes.push(n);
-    n.onended = () => {
-      const i = this.nodes.indexOf(n);
-      if (i >= 0) this.nodes.splice(i, 1);
-    };
-    return n;
+  /** 各主題一直存在的背景：環境聲、持續音、回聲 */
+  private setup() {
+    const ctx = this.a.ctx!;
+    const s = this.style;
+    if (s.arrangement === 'floating') this.a.ambience('wind', this.out, this.keepFn);
+    if (s.arrangement === 'ocean') this.a.ambience('waves', this.out, this.keepFn);
+    if (s.arrangement === 'space') {
+      // 低音持續音：正弦 + 很暗的鋸齒波
+      const g = ctx.createGain();
+      g.gain.value = 0.05;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 220;
+      lp.connect(g).connect(this.out);
+      for (const [type, m, det] of [
+        ['sine', s.root - 12, 0],
+        ['sawtooth', s.root - 12, 5],
+        ['sawtooth', s.root - 5, -5],
+      ] as [OscillatorType, number, number][]) {
+        const o = this.keepFn(ctx.createOscillator());
+        o.type = type;
+        o.frequency.value = mtof(m);
+        o.detune.value = det;
+        o.connect(lp);
+        o.start();
+      }
+      // 琶音的回聲（附點八分音符）
+      const delay = ctx.createDelay(2);
+      delay.delayTime.value = (60 / s.bpm) * 0.75;
+      const fb = ctx.createGain();
+      fb.gain.value = 0.38;
+      const tone = ctx.createBiquadFilter();
+      tone.type = 'lowpass';
+      tone.frequency.value = 900;
+      this.echo = ctx.createGain();
+      this.echo.connect(delay);
+      delay.connect(tone).connect(fb).connect(delay);
+      tone.connect(this.out);
+    }
   }
 
-  /** 往前排約 0.4 秒內要出現的音 */
   private schedule() {
     const ctx = this.a.ctx!;
     if (ctx.state !== 'running') return;
@@ -169,116 +191,84 @@ class Song {
     }
   }
 
-  private playStep(step: number, t: number, eighth: number) {
+  private playStep(step: number, t: number, e: number) {
     const s = this.style;
-    const stepsPerChord = s.bars * 8;
-    const chordIdx = Math.floor(step / stepsPerChord) % s.chords.length;
-    const chord = s.chords[chordIdx];
-    const inChord = step % stepsPerChord;
-    const chordDur = stepsPerChord * eighth;
+    const barLen = s.stepsPerBar;
+    const bar = Math.floor(step / barLen);
+    const inBar = step % barLen;
+    const chord = s.chords[Math.floor(bar / s.bars) % s.chords.length];
+    const chordStart = bar % s.bars === 0 && inBar === 0;
+    const chordDur = s.bars * barLen * e;
+    const n = (semi: number) => mtof(s.root + semi);
+    const a = this.a;
+    const out = this.out;
+    const k = this.keepFn;
 
-    // 換和弦：鋪底和弦 + 低音
-    if (inChord === 0) {
-      this.pad(chord, t, chordDur);
-      this.bass(s.root + chord[0] - 12, t, chordDur);
-    }
-
-    // 旋律：兩小節一句，句尾留白
-    const phrasePos = step % 32;
-    const resting = phrasePos >= 26;
-    if (resting) return;
-    const onBeat = step % 2 === 0;
-    const p = s.density * (onBeat ? 1.25 : 0.6);
-    if (Math.random() > p) return;
-
-    const scaleLen = s.scale.length;
-    // 隨機小步移動，偶爾跳遠一點；拍點上偏好和弦音
-    const move = Math.random() < 0.8 ? Math.round((Math.random() - 0.5) * 4) : Math.round((Math.random() - 0.5) * 8);
-    let idx = Math.max(scaleLen, Math.min(scaleLen * 3 - 1, this.last + move));
-    if (onBeat) {
-      for (let k = 0; k < 3; k++) {
-        const semi = s.scale[idx % scaleLen] + 12 * Math.floor(idx / scaleLen);
-        if (chord.some((c) => (((semi - c) % 12) + 12) % 12 === 0)) break;
-        idx += move >= 0 ? 1 : -1;
+    switch (s.arrangement) {
+      case 'floating': {
+        // 3/4 拍分解和弦：低音 → 五度 → 三度 → 五度 → 八度 → 五度
+        if (chordStart) a.pad(chord.slice(0, 4).map(n), t, chordDur, 'triangle', 900, 0.035, out, k);
+        if (inBar === 0) a.bass(n(chord[0] - 12), t, barLen * e, 0.12, out, k);
+        const pattern = [0, 2, 1, 2, 3, 2];
+        const tone = chord[pattern[inBar]];
+        a.nylon(n(tone), t + rnd(-0.01, 0.01), inBar === 0 ? 0.8 : 0.55, out, k);
+        // 偶爾在中音區加一句簡單旋律
+        if (bar % 4 >= 2 && (inBar === 0 || inBar === 3) && Math.random() < 0.55) {
+          a.nylon(n(this.melody(12, 2)), t + 0.02, 0.7, out, k);
+        }
+        break;
       }
-      idx = Math.max(scaleLen, Math.min(scaleLen * 3 - 1, idx));
-    }
-    this.last = idx;
-    const midi = s.root + 12 + s.scale[idx % scaleLen] + 12 * Math.floor(idx / scaleLen);
-    const vel = (onBeat ? 0.9 : 0.6) * (0.75 + Math.random() * 0.25);
-    this.a.voice(s.lead, mtof(midi), t + (Math.random() - 0.5) * 0.015, vel, this.out, this.keep.bind(this));
-  }
-
-  private pad(chord: number[], t: number, dur: number) {
-    const ctx = this.a.ctx!;
-    const s = this.style;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = s.padCutoff;
-    filter.Q.value = 0.3;
-    const g = ctx.createGain();
-    const level = (s.pad === 'sawtooth' ? 0.022 : 0.05) / Math.sqrt(chord.length);
-    const fade = Math.min(2.5, dur * 0.4);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(level, t + fade);
-    g.gain.setValueAtTime(level, t + dur);
-    g.gain.linearRampToValueAtTime(0, t + dur + fade);
-    filter.connect(g).connect(this.out);
-    for (const c of chord) {
-      for (const det of [-7, 7]) {
-        const o = this.keep(ctx.createOscillator());
-        o.type = s.pad;
-        o.frequency.value = mtof(s.root + c);
-        o.detune.value = det;
-        o.connect(filter);
-        o.start(t);
-        o.stop(t + dur + fade + 0.1);
+      case 'taiwan': {
+        // Lo-fi：後半拍稍微晃（swing）
+        const tt = inBar % 2 === 1 ? t + e * 0.2 : t;
+        if (inBar === 0 || inBar === 5) a.kick(tt, inBar === 0 ? 1 : 0.7, out, k);
+        if (inBar === 2 || inBar === 6) a.brush(tt, 1, out, k);
+        if (inBar === 4 && Math.random() < 0.3) a.brush(tt, 0.4, out, k);
+        if (inBar === 0) a.epiano(chord.map(n), tt, e * 3, 0.9, out, k);
+        if (inBar === 3) a.epiano(chord.map(n), tt, e * 4.5, 0.6, out, k);
+        if (inBar === 0) a.bass(n(chord[0] - 12), tt, e * 2.5, 0.16, out, k);
+        if (inBar === 3) a.bass(n(chord[0] - 12 + 7), tt, e * 1.5, 0.12, out, k);
+        if (inBar === 4) a.bass(n(chord[0] - 12), tt, e * 3, 0.14, out, k);
+        // 竹笛旋律：兩小節一句，再休息兩小節
+        if (bar % 4 < 2 && t >= this.melodyBusyUntil && Math.random() < 0.5) {
+          const len = [1, 2, 2, 3, 4][Math.floor(Math.random() * 5)] * e;
+          a.flute(n(this.melody(12, 2)), tt, len, 0.8, out, k);
+          this.melodyBusyUntil = t + len - 0.01;
+        }
+        break;
+      }
+      case 'ocean': {
+        // 沒有節奏：緩慢起伏的和聲 + 低沉的弦樂長音，偶爾一聲像鯨魚的滑音
+        if (chordStart) {
+          a.pad(chord.map(n), t, chordDur, 'sawtooth', 520, 0.03, out, k, true);
+          a.bass(n(chord[0] - 12), t, chordDur, 0.13, out, k);
+        }
+        if (inBar === 0 && bar % 2 === 0) {
+          const tone = chord[1 + Math.floor(Math.random() * (chord.length - 1))];
+          a.cello(n(tone), t + 0.1, barLen * e * 2, 0.8, out, k);
+        }
+        if (inBar === 4 && Math.random() < 0.06) a.cello(n(chord[0]), t, barLen * e * 1.5, 0.6, out, k, 1.35);
+        break;
+      }
+      case 'space': {
+        // 柔和的脈衝琶音，上上下下，濾波器慢慢開合
+        if (chordStart) a.pad(chord.map((c) => n(c + 12)), t, chordDur, 'sawtooth', 600, 0.02, out, k);
+        const up = [0, 1, 2, 3, 4, 3, 2, 1];
+        const tone = chord[up[inBar]];
+        const cutoff = 500 + 400 * (1 + Math.sin((step / 64) * Math.PI * 2));
+        a.pulse(n(tone + 12), t, inBar === 0 ? 0.8 : 0.55, cutoff, this.echo ?? out, k, out);
+        break;
       }
     }
   }
 
-  private bass(midi: number, t: number, dur: number) {
-    const ctx = this.a.ctx!;
-    const o = this.keep(ctx.createOscillator());
-    o.type = 'sine';
-    o.frequency.value = mtof(midi);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.09, t + 0.4);
-    g.gain.setTargetAtTime(0.05, t + 0.4, dur * 0.3);
-    g.gain.setTargetAtTime(0, t + dur - 0.2, 0.4);
-    o.connect(g).connect(this.out);
-    o.start(t);
-    o.stop(t + dur + 2);
-  }
-
-  private startAmbience() {
-    const ctx = this.a.ctx!;
-    const kind = this.style.ambience;
-    if (kind === 'none') return;
-    const src = this.keep(ctx.createBufferSource());
-    src.buffer = this.a.noise();
-    src.loop = true;
-    const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = kind === 'wind' ? 500 : 700;
-    const g = ctx.createGain();
-    g.gain.value = kind === 'wind' ? 0.012 : 0.02;
-    // 慢慢起伏：風一陣一陣、海浪一波一波
-    const lfo = this.keep(ctx.createOscillator());
-    lfo.frequency.value = kind === 'wind' ? 0.07 : 0.11;
-    const depth = ctx.createGain();
-    depth.gain.value = kind === 'wind' ? 0.01 : 0.018;
-    lfo.connect(depth).connect(g.gain);
-    const lfo2 = this.keep(ctx.createOscillator());
-    lfo2.frequency.value = 0.05;
-    const depth2 = ctx.createGain();
-    depth2.gain.value = 250;
-    lfo2.connect(depth2).connect(f.frequency);
-    src.connect(f).connect(g).connect(this.out);
-    src.start();
-    lfo.start();
-    lfo2.start();
+  /** 旋律：在音階上小步移動 */
+  private melody(base: number, octaves: number): number {
+    const sc = this.style.scale;
+    const len = sc.length;
+    const move = Math.random() < 0.8 ? Math.round(rnd(-2, 2)) : Math.round(rnd(-4, 4));
+    this.melodyIdx = Math.max(0, Math.min(len * octaves - 1, this.melodyIdx + move));
+    return base + sc[this.melodyIdx % len] + 12 * Math.floor(this.melodyIdx / len);
   }
 }
 
@@ -304,28 +294,36 @@ class AudioEngine {
       comp.threshold.value = -16;
       comp.ratio.value = 3;
       comp.connect(ctx.destination);
+      // 整體再收掉一點高頻，聽起來更柔
+      const soft = ctx.createBiquadFilter();
+      soft.type = 'lowpass';
+      soft.frequency.value = 5000;
+      soft.connect(comp);
       const master = ctx.createGain();
       master.gain.value = 2.2;
-      master.connect(comp);
+      master.connect(soft);
 
-      // 殘響：用衰減的雜訊做脈衝響應
+      // 殘響：用衰減的雜訊做脈衝響應（偏暗）
       const conv = ctx.createConvolver();
-      conv.buffer = this.impulse(3.2);
+      conv.buffer = this.impulse(3);
+      const dark = ctx.createBiquadFilter();
+      dark.type = 'lowpass';
+      dark.frequency.value = 2500;
       this.reverbIn = ctx.createGain();
-      this.reverbIn.connect(conv).connect(master);
+      this.reverbIn.connect(conv).connect(dark).connect(master);
 
       this.musicBus = ctx.createGain();
       this.musicBus.gain.value = this.musicOn ? 0.55 : 0;
       this.musicBus.connect(master);
       const musicSend = ctx.createGain();
-      musicSend.gain.value = 0.5;
+      musicSend.gain.value = 0.45;
       this.musicBus.connect(musicSend).connect(this.reverbIn);
 
       this.sfxBus = ctx.createGain();
       this.sfxBus.gain.value = this.sfxOn ? 1.1 : 0;
       this.sfxBus.connect(master);
       const sfxSend = ctx.createGain();
-      sfxSend.gain.value = 0.18;
+      sfxSend.gain.value = 0.15;
       this.sfxBus.connect(sfxSend).connect(this.reverbIn);
 
       document.addEventListener('visibilitychange', () => {
@@ -388,90 +386,275 @@ class AudioEngine {
     return b;
   }
 
-  // ── 樂器 ──
+  // ── 樂器（音色都偏暖，高頻用低通濾波器收掉） ──
 
-  /** 單一個旋律音 */
-  voice(kind: Lead, f: number, t: number, vel: number, out: AudioNode, keep: <T extends AudioScheduledSourceNode>(n: T) => T = (n) => n) {
+  private osc(type: OscillatorType, f: number, keep: Keep): OscillatorNode {
+    const o = keep(this.ctx!.createOscillator());
+    o.type = type;
+    o.frequency.value = f;
+    return o;
+  }
+
+  private lowpass(freq: number, q = 0.5): BiquadFilterNode {
+    const f = this.ctx!.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = freq;
+    f.Q.value = q;
+    return f;
+  }
+
+  /** 尼龍弦吉他：撥弦，亮度很快收掉 */
+  nylon(f: number, t: number, vel: number, out: AudioNode, keep: Keep = (n) => n) {
     const ctx = this.ctx!;
     const g = ctx.createGain();
-    g.connect(out);
-    const osc = (type: OscillatorType, freq: number) => {
-      const o = keep(ctx.createOscillator());
-      o.type = type;
-      o.frequency.value = freq;
-      return o;
-    };
-    if (kind === 'harp') {
-      // 豎琴：三角波 + 柔和泛音，亮度隨時間變暗
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(5000, t);
-      lp.frequency.exponentialRampToValueAtTime(900, t + 0.6);
-      lp.connect(g);
-      const a = osc('triangle', f);
-      const b = osc('sine', f * 2);
-      const bg = ctx.createGain();
-      bg.gain.value = 0.25;
-      a.connect(lp);
-      b.connect(bg).connect(lp);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.11 * vel, t + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 2.2);
-      [a, b].forEach((o) => (o.start(t), o.stop(t + 2.3)));
-    } else if (kind === 'zheng') {
-      // 古箏：鋸齒波撥弦，起音稍微往下滑，尾音輕輕揉弦
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.Q.value = 1.2;
-      lp.frequency.setValueAtTime(3200, t);
-      lp.frequency.exponentialRampToValueAtTime(700, t + 0.5);
-      lp.connect(g);
-      const a = osc('sawtooth', f);
-      a.frequency.setValueAtTime(f * 1.025, t);
-      a.frequency.exponentialRampToValueAtTime(f, t + 0.07);
-      const vib = osc('sine', 5.5);
-      const vg = ctx.createGain();
-      vg.gain.setValueAtTime(0, t);
-      vg.gain.linearRampToValueAtTime(f * 0.006, t + 0.6);
-      vib.connect(vg).connect(a.frequency);
-      a.connect(lp);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.07 * vel, t + 0.004);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 1.9);
-      [a, vib].forEach((o) => (o.start(t), o.stop(t + 2)));
-    } else if (kind === 'bell') {
-      // 鐘聲：FM 合成，泛音快速消失，留下圓潤的基音
-      const c = osc('sine', f);
-      const m = osc('sine', f * 3.5);
-      const mg = ctx.createGain();
-      mg.gain.setValueAtTime(f * 1.6, t);
-      mg.gain.exponentialRampToValueAtTime(1, t + 1.2);
-      m.connect(mg).connect(c.frequency);
-      c.connect(g);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.08 * vel, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 3.2);
-      [c, m].forEach((o) => (o.start(t), o.stop(t + 3.3)));
-    } else {
-      // 玻璃：慢慢浮出來的正弦波加八度泛音，輕微顫音
-      const a = osc('sine', f);
-      const b = osc('sine', f * 2.002);
-      const bg = ctx.createGain();
-      bg.gain.value = 0.3;
-      const vib = osc('sine', 4);
-      const vg = ctx.createGain();
-      vg.gain.value = f * 0.003;
-      vib.connect(vg).connect(a.frequency);
-      a.connect(g);
-      b.connect(bg).connect(g);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.07 * vel, t + 0.25);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 3.8);
-      [a, b, vib].forEach((o) => (o.start(t), o.stop(t + 3.9)));
+    const lp = this.lowpass(Math.min(2200, f * 6), 0.7);
+    lp.frequency.setValueAtTime(Math.min(2200, f * 6), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(200, f * 1.8), t + 0.5);
+    lp.connect(g).connect(out);
+    const a = this.osc('triangle', f, keep);
+    const b = this.osc('sawtooth', f * 1.002, keep);
+    const bg = ctx.createGain();
+    bg.gain.value = 0.25;
+    a.connect(lp);
+    b.connect(bg).connect(lp);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.1 * vel, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 1.6);
+    for (const o of [a, b]) {
+      o.start(t);
+      o.stop(t + 1.7);
     }
   }
 
-  // ── 音效 ──
+  /** 電鋼琴：柔和的和弦，輕微顫音 */
+  epiano(fs: number[], t: number, dur: number, vel: number, out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    const lp = this.lowpass(1400);
+    const trem = ctx.createGain();
+    trem.gain.value = 1;
+    const lfo = this.osc('sine', 4.5, keep);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.12;
+    lfo.connect(depth).connect(trem.gain);
+    lp.connect(trem).connect(g).connect(out);
+    const level = (0.07 * vel) / Math.sqrt(fs.length);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(level * 0.45, t + 0.8);
+    g.gain.setValueAtTime(level * 0.45, t + dur);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur + 0.5);
+    const end = t + dur + 0.6;
+    lfo.start(t);
+    lfo.stop(end);
+    for (const f of fs) {
+      const o = this.osc('sine', f, keep);
+      const h = this.osc('sine', f * 2, keep);
+      const hg = ctx.createGain();
+      hg.gain.setValueAtTime(0.18, t);
+      hg.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+      o.connect(lp);
+      h.connect(hg).connect(lp);
+      for (const x of [o, h]) {
+        x.start(t);
+        x.stop(end);
+      }
+    }
+  }
+
+  /** 竹笛：氣音 + 起音往上滑 + 慢慢出現的顫音 */
+  flute(f: number, t: number, dur: number, vel: number, out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    const lp = this.lowpass(1800);
+    lp.connect(g).connect(out);
+    const a = this.osc('sine', f, keep);
+    const b = this.osc('triangle', f, keep);
+    const bg = ctx.createGain();
+    bg.gain.value = 0.35;
+    a.frequency.setValueAtTime(f * 0.96, t);
+    a.frequency.exponentialRampToValueAtTime(f, t + 0.1);
+    b.frequency.setValueAtTime(f * 0.96, t);
+    b.frequency.exponentialRampToValueAtTime(f, t + 0.1);
+    const vib = this.osc('sine', 5.2, keep);
+    const vg = ctx.createGain();
+    vg.gain.setValueAtTime(0, t);
+    vg.gain.linearRampToValueAtTime(f * 0.01, t + Math.max(0.3, dur * 0.7));
+    vib.connect(vg);
+    vg.connect(a.frequency);
+    vg.connect(b.frequency);
+    a.connect(lp);
+    b.connect(bg).connect(lp);
+    // 氣音
+    const air = keep(ctx.createBufferSource());
+    air.buffer = this.noise();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f * 2;
+    bp.Q.value = 3;
+    const ag = ctx.createGain();
+    ag.gain.value = 0.25;
+    air.connect(bp).connect(ag).connect(lp);
+    const level = 0.075 * vel;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.08);
+    g.gain.setValueAtTime(level * 0.9, t + dur);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur + 0.35);
+    const end = t + dur + 0.4;
+    for (const o of [a, b, vib]) {
+      o.start(t);
+      o.stop(end);
+    }
+    air.start(t, Math.random());
+    air.stop(end);
+  }
+
+  /** 低沉的弦樂長音（可以從高處滑下來，像鯨魚） */
+  cello(f: number, t: number, dur: number, vel: number, out: AudioNode, keep: Keep, glide = 1) {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    const lp = this.lowpass(600, 0.6);
+    lp.connect(g).connect(out);
+    const o = this.osc('sawtooth', f, keep);
+    o.frequency.setValueAtTime(f * glide, t);
+    if (glide !== 1) o.frequency.exponentialRampToValueAtTime(f, t + dur * 0.6);
+    const vib = this.osc('sine', 4.6, keep);
+    const vg = ctx.createGain();
+    vg.gain.setValueAtTime(0, t);
+    vg.gain.linearRampToValueAtTime(f * 0.006, t + 1.2);
+    vib.connect(vg).connect(o.frequency);
+    o.connect(lp);
+    const level = 0.06 * vel;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.9);
+    g.gain.setValueAtTime(level, t + dur * 0.7);
+    g.gain.linearRampToValueAtTime(0, t + dur + 1.2);
+    for (const x of [o, vib]) {
+      x.start(t);
+      x.stop(t + dur + 1.3);
+    }
+  }
+
+  /** 柔和的脈衝波短音（太空的琶音） */
+  pulse(f: number, t: number, vel: number, cutoff: number, send: AudioNode, keep: Keep, dry: AudioNode) {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    const lp = this.lowpass(cutoff, 2);
+    lp.connect(g);
+    g.connect(dry);
+    if (send !== dry) g.connect(send);
+    const o = this.osc('square', f, keep);
+    o.connect(lp);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.035 * vel, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.45);
+    o.start(t);
+    o.stop(t + 0.5);
+  }
+
+  /** 鋪底和弦；sweep = 濾波器慢慢開合（像水波） */
+  pad(fs: number[], t: number, dur: number, type: OscillatorType, cutoff: number, level: number, out: AudioNode, keep: Keep, sweep = false) {
+    const ctx = this.ctx!;
+    const lp = this.lowpass(cutoff, 0.4);
+    const g = ctx.createGain();
+    const lv = level / Math.sqrt(fs.length);
+    const fade = Math.min(2.5, dur * 0.4);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(lv, t + fade);
+    g.gain.setValueAtTime(lv, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + fade);
+    lp.connect(g).connect(out);
+    const end = t + dur + fade + 0.1;
+    if (sweep) {
+      const lfo = this.osc('sine', 1 / 7, keep);
+      const d = ctx.createGain();
+      d.gain.value = cutoff * 0.45;
+      lfo.connect(d).connect(lp.frequency);
+      lfo.start(t);
+      lfo.stop(end);
+    }
+    for (const f of fs) {
+      for (const det of [-7, 7]) {
+        const o = this.osc(type, f, keep);
+        o.detune.value = det;
+        o.connect(lp);
+        o.start(t);
+        o.stop(end);
+      }
+    }
+  }
+
+  /** 低音：正弦波 */
+  bass(f: number, t: number, dur: number, level: number, out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const o = this.osc('sine', f, keep);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.03);
+    g.gain.setTargetAtTime(level * 0.6, t + 0.05, dur * 0.4);
+    g.gain.setTargetAtTime(0, t + dur, 0.12);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + dur + 0.8);
+  }
+
+  /** 軟軟的大鼓 */
+  kick(t: number, vel: number, out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const o = this.osc('sine', 100, keep);
+    o.frequency.setValueAtTime(100, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.15);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.32 * vel, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.35);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + 0.4);
+  }
+
+  /** 刷子小鼓（收掉高頻，很輕） */
+  brush(t: number, vel: number, out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const src = keep(ctx.createBufferSource());
+    src.buffer = this.noise();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1300;
+    bp.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.06 * vel, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.22);
+    src.connect(bp).connect(g).connect(out);
+    src.start(t, Math.random());
+    src.stop(t + 0.25);
+  }
+
+  /** 環境聲：風一陣一陣、海浪一波一波 */
+  ambience(kind: 'wind' | 'waves', out: AudioNode, keep: Keep) {
+    const ctx = this.ctx!;
+    const src = keep(ctx.createBufferSource());
+    src.buffer = this.noise();
+    src.loop = true;
+    const f = this.lowpass(kind === 'wind' ? 450 : 600);
+    const g = ctx.createGain();
+    g.gain.value = kind === 'wind' ? 0.012 : 0.022;
+    const lfo = this.osc('sine', kind === 'wind' ? 0.07 : 0.11, keep);
+    const depth = ctx.createGain();
+    depth.gain.value = kind === 'wind' ? 0.01 : 0.02;
+    lfo.connect(depth).connect(g.gain);
+    const lfo2 = this.osc('sine', 0.05, keep);
+    const depth2 = ctx.createGain();
+    depth2.gain.value = 200;
+    lfo2.connect(depth2).connect(f.frequency);
+    src.connect(f).connect(g).connect(out);
+    src.start();
+    lfo.start();
+    lfo2.start();
+  }
+
+  // ── 音效（都是木頭聲、撥弦，不用高頻的叮聲） ──
 
   private ready(): AudioContext | null {
     if (!this.ctx || !this.sfxOn || this.ctx.state !== 'running') return null;
@@ -487,7 +670,7 @@ class AudioEngine {
     f.type = type;
     f.frequency.setValueAtTime(freq, t);
     if (toFreq) f.frequency.exponentialRampToValueAtTime(toFreq, t + dur);
-    f.Q.value = type === 'bandpass' ? 1.5 : 0.7;
+    f.Q.value = type === 'bandpass' ? 1.2 : 0.7;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + Math.min(0.01, dur * 0.3));
@@ -513,16 +696,13 @@ class AudioEngine {
     o.stop(t + dur + 0.05);
   }
 
-  /** 依目前主題的音階取音（給提示音用，跟音樂合調） */
-  private note(degree: number, octave = 1): number {
+  /** 依目前主題的音階取音（中低音區，跟音樂合調） */
+  private note(degree: number): number {
     const s = this.song?.style ?? STYLES[this.wantTheme ?? 'floating'] ?? STYLES.floating;
     const n = s.scale.length;
     const d = ((degree % n) + n) % n;
-    return mtof(s.root + 12 * (octave + Math.floor(degree / n)) + s.scale[d]);
-  }
-
-  private lead(): Lead {
-    return (this.song?.style ?? STYLES[this.wantTheme ?? 'floating'] ?? STYLES.floating).lead;
+    const root = s.root < 48 ? s.root + 12 : s.root;
+    return mtof(root + 12 * Math.floor(degree / n) + s.scale[d]);
   }
 
   /** 按鈕 */
@@ -530,8 +710,8 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.knock(t, 900, 700, 0.06, 0.12);
-    this.burst(t, 0.03, 'bandpass', 3000, 0.05);
+    this.knock(t, 520, 400, 0.06, 0.14);
+    this.burst(t, 0.03, 'bandpass', 1400, 0.05);
   }
 
   /** 選一張牌：木片輕敲 */
@@ -539,8 +719,8 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.knock(t, 620, 420, 0.1, 0.22);
-    this.burst(t, 0.04, 'bandpass', 1800, 0.12);
+    this.knock(t, 420, 300, 0.1, 0.22);
+    this.burst(t, 0.04, 'bandpass', 1100, 0.1);
   }
 
   /** 點格子預覽 */
@@ -548,8 +728,8 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.knock(t, 480, 360, 0.09, 0.16);
-    this.burst(t, 0.05, 'bandpass', 1200, 0.06);
+    this.knock(t, 340, 250, 0.1, 0.2);
+    this.burst(t, 0.05, 'bandpass', 900, 0.06);
   }
 
   /** 旋轉地塊：輕輕刷過去的聲音 */
@@ -557,42 +737,38 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.burst(t, 0.14, 'bandpass', 900, 0.1, 2600);
-    this.knock(t + 0.08, 760, 600, 0.05, 0.08);
+    this.burst(t, 0.14, 'bandpass', 500, 0.12, 1300);
+    this.knock(t + 0.08, 380, 300, 0.06, 0.1);
   }
 
   /** 取消 */
   cancel() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
-    this.knock(t, 420, 260, 0.1, 0.12);
+    this.knock(ctx.currentTime, 300, 190, 0.12, 0.14);
   }
 
-  /** 放下地塊：木頭「咚」一聲，接合的邊越多，後面的撥弦越多；完美接合多一段亮音 */
+  /** 放下地塊：木頭「咚」一聲，接合的邊越多，後面的撥弦越多；完美接合多一個溫暖的和弦 */
   place(matches: number, perfect: boolean) {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.knock(t, 170, 80, 0.22, 0.45);
-    this.burst(t, 0.09, 'lowpass', 900, 0.25);
-    const kind = this.lead();
-    for (let i = 0; i < Math.min(matches, 6); i++) {
-      this.voice(kind, this.note(i, 1), t + 0.08 + i * 0.07, 0.7, this.sfxBus!);
-    }
+    this.knock(t, 150, 70, 0.25, 0.5);
+    this.burst(t, 0.09, 'lowpass', 700, 0.25);
+    const m = Math.min(matches, 6);
+    for (let i = 0; i < m; i++) this.nylon(this.note(i), t + 0.08 + i * 0.07, 0.8, this.sfxBus!);
     if (perfect) {
-      const t2 = t + 0.1 + Math.min(matches, 6) * 0.07;
-      [0, 2, 4, 7].forEach((d, i) => this.voice('bell', this.note(d, 2), t2 + i * 0.06, 0.5, this.sfxBus!));
+      const t2 = t + 0.12 + m * 0.07;
+      [0, 2, 4].forEach((d, i) => this.nylon(this.note(d), t2 + i * 0.03, 0.8, this.sfxBus!));
     }
   }
 
-  /** 到達新的車站：和弦鐘聲 */
+  /** 到達新的車站：溫暖的掃弦和弦 */
   station() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime + 0.25;
-    [0, 2, 4].forEach((d) => this.voice('bell', this.note(d, 1), t, 0.6, this.sfxBus!));
-    this.voice('bell', this.note(0, 2), t + 0.18, 0.5, this.sfxBus!);
+    const t = ctx.currentTime + 0.3;
+    [0, 2, 4, 5].forEach((d, i) => this.nylon(this.note(d), t + i * 0.035, 0.9, this.sfxBus!));
   }
 
   /** 時代前進（新的交通工具出現） */
@@ -600,15 +776,14 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime + 0.2;
-    const kind = this.lead();
-    [0, 1, 2, 4].forEach((d, i) => this.voice(kind, this.note(d, 1), t + i * 0.11, 0.7, this.sfxBus!));
+    [0, 1, 2, 4].forEach((d, i) => this.nylon(this.note(d), t + i * 0.12, 0.8, this.sfxBus!));
   }
 
   /** 發牌：牌從桌上滑過來 */
   dealSlide() {
     const ctx = this.ready();
     if (!ctx) return;
-    this.burst(ctx.currentTime, 0.28, 'bandpass', 2400, 0.05, 900);
+    this.burst(ctx.currentTime, 0.28, 'bandpass', 1200, 0.06, 600);
   }
 
   /** 翻牌甩到桌上的「啪」 */
@@ -616,8 +791,8 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.burst(t, 0.05, 'lowpass', 3000, 0.3);
-    this.knock(t, 240, 120, 0.07, 0.18);
+    this.burst(t, 0.05, 'lowpass', 1600, 0.3);
+    this.knock(t, 200, 100, 0.08, 0.2);
   }
 
   /** 結束：慢慢往下的幾個音 */
@@ -625,7 +800,7 @@ class AudioEngine {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime + 0.1;
-    [4, 2, 1, 0].forEach((d, i) => this.voice('bell', this.note(d, 1), t + i * 0.32, 0.6, this.sfxBus!));
+    [4, 2, 1, 0].forEach((d, i) => this.nylon(this.note(d), t + i * 0.35, 0.8, this.sfxBus!));
   }
 }
 
