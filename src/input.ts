@@ -1,4 +1,4 @@
-// 觸控／滑鼠：單指拖曳、雙指縮放與旋轉、點一下、滾輪縮放
+// 觸控／滑鼠：單指拖曳、雙指縮放與旋轉、點一下、滾輪縮放、滑鼠右鍵拖曳旋轉
 
 export interface InputHandlers {
   onTap(x: number, y: number): void;
@@ -32,9 +32,16 @@ export function attachInput(el: HTMLElement, h: InputHandlers): () => void {
     };
   };
 
+  // 滑鼠右鍵：左右拖曳旋轉視角
+  let rightDrag: { x: number } | null = null;
+
   const down = (e: PointerEvent) => {
     el.setPointerCapture(e.pointerId);
     const p = local(e);
+    if (e.pointerType === 'mouse' && e.button === 2) {
+      rightDrag = { x: p.x };
+      return;
+    }
     pointers.set(e.pointerId, p);
     if (pointers.size === 1) {
       downPos = p;
@@ -47,6 +54,12 @@ export function attachInput(el: HTMLElement, h: InputHandlers): () => void {
   };
 
   const move = (e: PointerEvent) => {
+    if (rightDrag) {
+      const p = local(e);
+      h.onRotate?.((p.x - rightDrag.x) * 0.008);
+      rightDrag.x = p.x;
+      return;
+    }
     const prev = pointers.get(e.pointerId);
     if (!prev) return;
     const p = local(e);
@@ -70,6 +83,10 @@ export function attachInput(el: HTMLElement, h: InputHandlers): () => void {
   };
 
   const up = (e: PointerEvent) => {
+    if (rightDrag && e.pointerType === 'mouse') {
+      rightDrag = null;
+      return;
+    }
     const had = pointers.delete(e.pointerId);
     if (!had) return;
     if (pointers.size === 0) {
@@ -93,7 +110,10 @@ export function attachInput(el: HTMLElement, h: InputHandlers): () => void {
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
   el.addEventListener('wheel', wheel, { passive: false });
+  const noMenu = (e: Event) => e.preventDefault();
+  el.addEventListener('contextmenu', noMenu);
   return () => {
+    el.removeEventListener('contextmenu', noMenu);
     el.removeEventListener('pointerdown', down);
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);

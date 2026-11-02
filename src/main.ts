@@ -256,6 +256,7 @@ function startGame(theme: Theme, existing: GameState | null) {
   mount(root, () => {
     detach();
     window.removeEventListener('resize', onResize);
+    window.removeEventListener('keydown', onKey);
     cancelAnimationFrame(raf);
     board.dispose();
   });
@@ -298,6 +299,16 @@ function startGame(theme: Theme, existing: GameState | null) {
     requestRender();
   }
   window.addEventListener('resize', onResize);
+
+  // 鍵盤：Q / E 旋轉視角
+  function onKey(e: KeyboardEvent) {
+    const k = e.key.toLowerCase();
+    if (k !== 'q' && k !== 'e') return;
+    board.rotate((k === 'q' ? -1 : 1) * (Math.PI / 12));
+    requestRender();
+    scheduleHandRedraw();
+  }
+  window.addEventListener('keydown', onKey);
 
   const detach = attachInput(canvas, {
     onTap(x, y) {
