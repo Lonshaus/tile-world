@@ -2,7 +2,7 @@
 // 每個主題有自己的曲風、節奏和樂器，音色都偏溫暖、中低音，不用高頻的叮叮聲。
 //   浮島：3/4 拍的尼龍吉他分解和弦，像在雲上慢慢晃
 //   台灣街景：Lo-fi，電鋼琴和弦 + 輕刷鼓 + 低音，加上像竹笛的旋律
-//   海底：沒有節奏，低沉的弦樂長音與緩慢起伏的和聲，背景有海浪
+//   海底：緩慢起伏的和聲 + 溫柔的撥弦旋律帶回聲，背景有海浪
 //   太空：低音持續音 + 柔和的脈衝琶音帶回聲，慢慢變化
 
 type Arrangement = 'floating' | 'taiwan' | 'ocean' | 'space';
@@ -163,14 +163,16 @@ class Song {
         o.connect(lp);
         o.start();
       }
-      // 琶音的回聲（附點八分音符）
+    }
+    if (s.arrangement === 'space' || s.arrangement === 'ocean') {
+      // 回聲（附點八分音符）：太空的琶音、海底的撥弦，像在水裡迴盪
       const delay = ctx.createDelay(2);
       delay.delayTime.value = (60 / s.bpm) * 0.75;
       const fb = ctx.createGain();
-      fb.gain.value = 0.38;
+      fb.gain.value = s.arrangement === 'ocean' ? 0.42 : 0.38;
       const tone = ctx.createBiquadFilter();
       tone.type = 'lowpass';
-      tone.frequency.value = 900;
+      tone.frequency.value = s.arrangement === 'ocean' ? 700 : 900;
       this.echo = ctx.createGain();
       this.echo.connect(delay);
       delay.connect(tone).connect(fb).connect(delay);
@@ -238,16 +240,19 @@ class Song {
         break;
       }
       case 'ocean': {
-        // 沒有節奏：緩慢起伏的和聲 + 低沉的弦樂長音，偶爾一聲像鯨魚的滑音
+        // 緩慢起伏的和聲 + 溫柔的撥弦旋律，帶回聲，像在水裡迴盪
         if (chordStart) {
-          a.pad(chord.map(n), t, chordDur, 'sawtooth', 520, 0.03, out, k, true);
+          a.pad(chord.map(n), t, chordDur, 'sawtooth', 520, 0.025, out, k, true);
           a.bass(n(chord[0] - 12), t, chordDur, 0.13, out, k);
         }
-        if (inBar === 0 && bar % 2 === 0) {
-          const tone = chord[1 + Math.floor(Math.random() * (chord.length - 1))];
-          a.cello(n(tone), t + 0.1, barLen * e * 2, 0.8, out, k);
+        // 兩小節一句，再休息一小節；拍點上才彈，音少、慢
+        const phrase = bar % 3;
+        if (phrase < 2 && inBar % 2 === 0 && t >= this.melodyBusyUntil && Math.random() < (inBar === 0 ? 0.9 : 0.45)) {
+          const echo = this.echo ?? out;
+          a.harp(n(this.melody(12, 2)), t + rnd(0, 0.02), inBar === 0 ? 0.9 : 0.7, out, k, echo);
+          this.melodyBusyUntil = t + e * (Math.random() < 0.4 ? 3.5 : 1.5);
         }
-        if (inBar === 4 && Math.random() < 0.06) a.cello(n(chord[0]), t, barLen * e * 1.5, 0.6, out, k, 1.35);
+        if (phrase === 2 && inBar === 0) a.harp(n(chord[1] + 12), t, 0.5, out, k, this.echo ?? out);
         break;
       }
       case 'space': {
@@ -509,29 +514,31 @@ class AudioEngine {
     air.stop(end);
   }
 
-  /** 低沉的弦樂長音（可以從高處滑下來，像鯨魚） */
-  cello(f: number, t: number, dur: number, vel: number, out: AudioNode, keep: Keep, glide = 1) {
+  /** 溫柔的撥弦（豎琴般），可另外送進回聲 */
+  harp(f: number, t: number, vel: number, out: AudioNode, keep: Keep, send?: AudioNode) {
     const ctx = this.ctx!;
     const g = ctx.createGain();
-    const lp = this.lowpass(600, 0.6);
-    lp.connect(g).connect(out);
-    const o = this.osc('sawtooth', f, keep);
-    o.frequency.setValueAtTime(f * glide, t);
-    if (glide !== 1) o.frequency.exponentialRampToValueAtTime(f, t + dur * 0.6);
-    const vib = this.osc('sine', 4.6, keep);
-    const vg = ctx.createGain();
-    vg.gain.setValueAtTime(0, t);
-    vg.gain.linearRampToValueAtTime(f * 0.006, t + 1.2);
-    vib.connect(vg).connect(o.frequency);
-    o.connect(lp);
-    const level = 0.06 * vel;
+    const lp = this.lowpass(Math.min(1600, f * 4), 0.5);
+    lp.frequency.setValueAtTime(Math.min(1600, f * 4), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(200, f * 1.5), t + 0.8);
+    lp.connect(g);
+    g.connect(out);
+    if (send && send !== out) {
+      const sg = ctx.createGain();
+      sg.gain.value = 0.6;
+      g.connect(sg).connect(send);
+    }
+    const a = this.osc('triangle', f, keep);
+    const b = this.osc('sine', f, keep);
+    b.detune.value = 4;
+    a.connect(lp);
+    b.connect(lp);
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(level, t + 0.9);
-    g.gain.setValueAtTime(level, t + dur * 0.7);
-    g.gain.linearRampToValueAtTime(0, t + dur + 1.2);
-    for (const x of [o, vib]) {
-      x.start(t);
-      x.stop(t + dur + 1.3);
+    g.gain.linearRampToValueAtTime(0.085 * vel, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 2.6);
+    for (const o of [a, b]) {
+      o.start(t);
+      o.stop(t + 2.7);
     }
   }
 
