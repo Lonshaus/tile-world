@@ -324,6 +324,8 @@ button {
   gap: 14px;
   justify-content: center;
   width: 100%;
+  /* 選中的牌會往上浮 14px，預留空間避免蓋到上方文字 */
+  padding-top: 16px;
   padding-bottom: 4px;
 }
 /* 卡牌：撲克牌比例，沒有邊框 */
