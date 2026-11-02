@@ -484,13 +484,16 @@ function startGame(theme: Theme, existing: GameState | null) {
           dealt.add(c.id);
           const delay = dealIndex++ * DEAL_STAGGER;
           inner.style.visibility = 'hidden';
-          toDeal.push(() => {
-            setTimeout(() => audio.dealSlide(), delay * 1000);
-            dealFx.play(c.id, btn, front, back, delay, () => {
-              audio.dealSlap();
-              vibrate(25);
-            }, () => refreshUI());
-          });
+          toDeal.push(() =>
+            dealFx.play(c.id, btn, front, back, delay, (cue) => {
+              if (cue === 'slide') audio.dealSlide();
+              else if (cue === 'flip') audio.dealFlip();
+              else {
+                audio.dealSlap();
+                vibrate(25);
+              }
+            }, () => refreshUI()),
+          );
         } else if (dealFx.isDealing(c.id)) {
           inner.style.visibility = 'hidden';
         }
@@ -576,6 +579,7 @@ function startGame(theme: Theme, existing: GameState | null) {
       state,
       board,
       dealFx,
+      audio,
       cells: () => placeableCells(state).map((c) => board.hexToScreen(c)),
     };
   }

@@ -81,6 +81,9 @@ const STYLES: Record<string, MusicStyle> = {
   },
 };
 
+/** 音效稍微往後排一點點再播：排在「現在」的話，主執行緒一忙，短音效的包絡線會整段落在過去而沒聲音 */
+const SFX_AHEAD = 0.03;
+
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -331,6 +334,10 @@ class AudioEngine {
       sfxSend.gain.value = 0.15;
       this.sfxBus.connect(sfxSend).connect(this.reverbIn);
 
+      // 先把雜訊做好，第一次播音效時才不會因為現做而延遲
+      this.noise();
+      this.paper();
+
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) void this.ctx?.suspend();
         else void this.ctx?.resume();
@@ -378,6 +385,44 @@ class AudioEngine {
       this.noiseBuf = b;
     }
     return this.noiseBuf;
+  }
+
+  private paperBuf: AudioBuffer | null = null;
+
+  /** 紙的摩擦聲：雜訊再乘上一顆一顆隨機起伏的顆粒，聽起來沙沙的 */
+  private paper(): AudioBuffer {
+    if (!this.paperBuf) {
+      const ctx = this.ctx!;
+      const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = b.getChannelData(0);
+      const grainLen = Math.floor(ctx.sampleRate * 0.004);
+      let amp = 1;
+      for (let i = 0; i < d.length; i++) {
+        if (i % grainLen === 0) amp = 0.25 + Math.random() * 0.75;
+        d[i] = (Math.random() * 2 - 1) * amp;
+      }
+      this.paperBuf = b;
+    }
+    return this.paperBuf;
+  }
+
+  /** 紙牌聲：帶通濾波的紙摩擦雜訊，可以掃頻 */
+  private rustle(t: number, dur: number, freq: number, toFreq: number, gain: number, attack = 0.01, q = 0.9) {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.paper();
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = q;
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(toFreq, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    src.connect(f).connect(g).connect(this.sfxBus!);
+    src.start(t, Math.random());
+    src.stop(t + dur + 0.05);
   }
 
   private impulse(sec: number): AudioBuffer {
@@ -716,7 +761,7 @@ class AudioEngine {
   tap() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + SFX_AHEAD;
     this.knock(t, 520, 400, 0.06, 0.14);
     this.burst(t, 0.03, 'bandpass', 1400, 0.05);
   }
@@ -725,16 +770,17 @@ class AudioEngine {
   select() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
-    this.knock(t, 420, 300, 0.1, 0.22);
-    this.burst(t, 0.04, 'bandpass', 1100, 0.1);
+    const t = ctx.currentTime + SFX_AHEAD;
+    // 用指尖把牌推出來一點：短短的紙摩擦 + 很輕的觸碰
+    this.rustle(t, 0.09, 1600, 2400, 0.45, 0.006);
+    this.knock(t, 260, 200, 0.05, 0.1);
   }
 
   /** 點格子預覽 */
   preview() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + SFX_AHEAD;
     this.knock(t, 340, 250, 0.1, 0.2);
     this.burst(t, 0.05, 'bandpass', 900, 0.06);
   }
@@ -743,7 +789,7 @@ class AudioEngine {
   rotate() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + SFX_AHEAD;
     this.burst(t, 0.14, 'bandpass', 500, 0.12, 1300);
     this.knock(t + 0.08, 380, 300, 0.06, 0.1);
   }
@@ -752,15 +798,15 @@ class AudioEngine {
   cancel() {
     const ctx = this.ready();
     if (!ctx) return;
-    this.knock(ctx.currentTime, 300, 190, 0.12, 0.14);
+    this.knock(ctx.currentTime + SFX_AHEAD, 300, 190, 0.12, 0.14);
   }
 
   /** 放下地塊：木頭「咚」一聲，接合的邊越多，後面的撥弦越多；完美接合多一個溫暖的和弦 */
   place(matches: number, perfect: boolean) {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
-    this.knock(t, 150, 70, 0.25, 0.5);
+    const t = ctx.currentTime + SFX_AHEAD;
+    this.knock(t, 150, 70, 0.25, 0.35);
     this.burst(t, 0.09, 'lowpass', 700, 0.25);
     const m = Math.min(matches, 6);
     for (let i = 0; i < m; i++) this.nylon(this.note(i), t + 0.08 + i * 0.07, 0.8, this.sfxBus!);
@@ -790,16 +836,29 @@ class AudioEngine {
   dealSlide() {
     const ctx = this.ready();
     if (!ctx) return;
-    this.burst(ctx.currentTime, 0.28, 'bandpass', 1200, 0.06, 600);
+    // 牌面貼著桌子滑過來：沙沙聲，越滑越慢、越輕
+    const t = ctx.currentTime + SFX_AHEAD;
+    this.rustle(t, 0.3, 2200, 1100, 0.3, 0.03, 0.7);
   }
 
-  /** 翻牌甩到桌上的「啪」 */
+  /** 掀牌：紙牌彎起來、翻過去的「唰」 */
+  dealFlip() {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime + SFX_AHEAD;
+    this.rustle(t, 0.07, 1400, 2600, 0.2, 0.03, 1.2);
+    // 翻過去時帶起的風
+    this.burst(t + 0.04, 0.22, 'bandpass', 500, 0.18, 1200);
+  }
+
+  /** 紙牌甩到桌上的「啪」：清脆的紙聲 + 很輕的桌面低音 */
   dealSlap() {
     const ctx = this.ready();
     if (!ctx) return;
-    const t = ctx.currentTime;
-    this.burst(t, 0.05, 'lowpass', 1600, 0.3);
-    this.knock(t, 200, 100, 0.08, 0.2);
+    const t = ctx.currentTime + SFX_AHEAD;
+    this.rustle(t, 0.06, 2600, 1500, 0.6, 0.002, 0.8);
+    this.burst(t, 0.04, 'lowpass', 900, 0.25);
+    this.knock(t, 140, 80, 0.06, 0.1);
   }
 
   /** 結束：慢慢往下的幾個音 */

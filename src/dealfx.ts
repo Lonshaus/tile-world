@@ -14,6 +14,9 @@ export const DEAL_TOTAL = SLIDE + REST + FLIP + SLAM + SETTLE;
 const LAG_START = 2.2; // 剛掀起來時很軟，左下角先翹起來
 const LAG_FLIP = 0.5; // 翻到後面比較挺
 
+/** 動畫中的時間點：開始滑進來、開始掀牌、甩到桌上 */
+export type DealCue = 'slide' | 'flip' | 'impact';
+
 interface Active {
   id: number;
   /** 第一個畫面出現時才開始計時（NaN = 還沒開始），避免開局準備工作吃掉動畫 */
@@ -26,8 +29,9 @@ interface Active {
   base: Float32Array;
   textures: THREE.Texture[];
   shadow: THREE.Mesh;
-  impacted: boolean;
-  onImpact: () => void;
+  /** 已經送出的時間點（避免重複觸發） */
+  cued: Set<DealCue>;
+  onCue: (cue: DealCue) => void;
   onDone: () => void;
 }
 
@@ -80,7 +84,7 @@ export class DealFx {
     front: HTMLCanvasElement,
     back: HTMLCanvasElement,
     delay: number,
-    onImpact: () => void,
+    onCue: (cue: DealCue) => void,
     onDone: () => void,
   ) {
     if (this.isDealing(id)) return;
@@ -132,8 +136,8 @@ export class DealFx {
       base: Float32Array.from(geo.attributes.position.array as Float32Array),
       textures: [f.tex, b.tex],
       shadow,
-      impacted: false,
-      onImpact,
+      cued: new Set(),
+      onCue,
       onDone,
     });
     mesh.visible = false;
@@ -216,10 +220,15 @@ export class DealFx {
       squash = 1 - 0.035 * Math.sin(Math.PI * Math.min(1, k * 2)) * (1 - k);
       lift = Math.max(0, Math.sin(Math.PI * k * 2)) * (1 - k) * h * 0.025;
     }
-    if (tSlam >= 0 && !a.impacted) {
-      a.impacted = true;
-      a.onImpact();
-    }
+    const cue = (c: DealCue, when: boolean) => {
+      if (when && !a.cued.has(c)) {
+        a.cued.add(c);
+        a.onCue(c);
+      }
+    };
+    cue('slide', t >= 0);
+    cue('flip', tFlip >= 0);
+    cue('impact', tSlam >= 0);
     a.mesh.position.set(cx + slideX, cy + slideY, 0);
     a.mesh.scale.set(1 / squash, squash, 1);
 
