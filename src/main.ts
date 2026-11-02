@@ -1,0 +1,482 @@
+import './style.css';
+import {
+  GameState,
+  bestRotation,
+  canPlace,
+  evaluate,
+  newGame,
+  placeTile,
+  placeableCells,
+  rotateEdges,
+  stationOf,
+  tilesLeft,
+} from './game';
+import { Hex, key } from './hex';
+import { LANGS, Lang, detectLang, setLang, t } from './i18n';
+import { attachInput } from './input';
+import { Board3D } from './three/board3d';
+import { drawCard, drawCarvedHex, drawWoodPanel } from './carved';
+import * as save from './save';
+import { THEMES, Theme } from './themes';
+import { confirmDialog, h, toast } from './dom';
+
+const app = document.getElementById('app')!;
+let settings = save.loadSettings();
+setLang(settings.lang ?? detectLang());
+
+function vibrate(ms: number) {
+  if (settings.haptics) navigator.vibrate?.(ms);
+}
+
+let cleanupScreen: (() => void) | null = null;
+function mount(el: HTMLElement, cleanup?: () => void) {
+  cleanupScreen?.();
+  cleanupScreen = cleanup ?? null;
+  app.replaceChildren(el);
+}
+
+// ───────────────────────── 主選單 ─────────────────────────
+
+function showMenu() {
+  const cards = THEMES.map((th) => {
+    const best = save.getBest(th.id);
+    const hasSave = th.enabled && save.loadGame(th.id) !== null;
+    return h(
+      'button',
+      {
+        class: `theme-card${th.enabled ? '' : ' disabled'}`,
+        style: `--accent:${th.accent}`,
+        disabled: !th.enabled,
+        onclick: () => onThemePicked(th, hasSave),
+      },
+      themeThumb(th),
+      h('span', { class: 'theme-name' }, t(th.nameKey)),
+      h(
+        'span',
+        { class: 'theme-meta' },
+        !th.enabled ? t('menu.comingSoon') : hasSave ? `▶ ${t('menu.continue')}` : best > 0 ? t('menu.best', { score: best }) : '',
+      ),
+    );
+  });
+
+  mount(
+    h(
+      'div',
+      { class: 'screen menu' },
+      h('h1', { class: 'logo' }, t('title')),
+      h('p', { class: 'subtitle' }, t('subtitle')),
+      h('h2', { class: 'section-title' }, t('menu.chooseTheme')),
+      h('div', { class: 'theme-grid' }, ...cards),
+      h('button', { class: 'btn ghost', onclick: showSettings }, `⚙ ${t('menu.settings')}`),
+    ),
+  );
+}
+
+function themeThumb(th: Theme): HTMLCanvasElement {
+  const c = h('canvas', { class: 'theme-thumb', width: 320, height: 240 });
+  const ctx = c.getContext('2d')!;
+  drawWoodPanel(ctx, 320, 240, th.id.length * 97, 20);
+  if (th.enabled) {
+    drawCarvedHex(ctx, th, [0, 0, 3, 3, 2, 0], 112, 96, 50, 7);
+    drawCarvedHex(ctx, th, [4, 4, 0, 0, 1, 1], 199, 96, 50, 11);
+    drawCarvedHex(ctx, th, [1, 2, 2, 1, 3, 3], 155, 171, 50, 3);
+  }
+  return c;
+}
+
+async function onThemePicked(th: Theme, hasSave: boolean) {
+  if (!th.enabled) return;
+  if (!hasSave) return startGame(th, null);
+  const existing = save.loadGame(th.id);
+  // 有存檔：直接繼續；開新局從遊戲內選單
+  startGame(th, existing);
+}
+
+// ───────────────────────── 設定 ─────────────────────────
+
+function showSettings() {
+  const langButtons = LANGS.map((l) =>
+    h(
+      'button',
+      {
+        class: `chip${(settings.lang ?? detectLang()) === l.id ? ' on' : ''}`,
+        onclick: () => {
+          settings = { ...settings, lang: l.id as Lang };
+          save.saveSettings(settings);
+          setLang(l.id);
+          showSettings();
+        },
+      },
+      l.label,
+    ),
+  );
+  mount(
+    h(
+      'div',
+      { class: 'screen settings' },
+      h('h1', { class: 'page-title' }, t('settings.title')),
+      h('div', { class: 'setting' }, h('span', {}, t('settings.language')), h('div', { class: 'chips' }, ...langButtons)),
+      h(
+        'div',
+        { class: 'setting' },
+        h('span', {}, t('settings.haptics')),
+        h(
+          'div',
+          { class: 'chips' },
+          ...[true, false].map((v) =>
+            h(
+              'button',
+              {
+                class: `chip${settings.haptics === v ? ' on' : ''}`,
+                onclick: () => {
+                  settings = { ...settings, haptics: v };
+                  save.saveSettings(settings);
+                  if (v) vibrate(20);
+                  showSettings();
+                },
+              },
+              v ? t('settings.on') : t('settings.off'),
+            ),
+          ),
+        ),
+      ),
+      h(
+        'div',
+        { class: 'setting' },
+        h('span', {}, t('settings.quality')),
+        h(
+          'div',
+          { class: 'chips' },
+          ...(['low', 'medium', 'high'] as const).map((v) =>
+            h(
+              'button',
+              {
+                class: `chip${settings.quality === v ? ' on' : ''}`,
+                onclick: () => {
+                  settings = { ...settings, quality: v };
+                  save.saveSettings(settings);
+                  showSettings();
+                },
+              },
+              t(`settings.quality.${v}`),
+            ),
+          ),
+        ),
+      ),
+      h(
+        'button',
+        {
+          class: 'btn danger',
+          onclick: async () => {
+            if (await confirmDialog(t('settings.confirmClear'), t('common.yes'), t('common.no'))) {
+              save.clearAll();
+              toast(t('settings.cleared'));
+            }
+          },
+        },
+        t('settings.clear'),
+      ),
+      h('button', { class: 'btn', onclick: showMenu }, `← ${t('settings.back')}`),
+    ),
+  );
+}
+
+// ───────────────────────── 遊戲 ─────────────────────────
+
+function startGame(theme: Theme, existing: GameState | null) {
+  const state = existing ?? newGame(theme.id);
+  save.saveGame(state);
+
+  let selected = 0;
+  let rot = 0;
+  let preview: Hex | null = null;
+  let pop: { hex: Hex; start: number } | null = null;
+  let viewingOnly = false; // 結束後觀看世界
+
+  // 畫面元素
+  const canvas = h('canvas', { class: 'board' });
+  const scoreEl = h('span', { class: 'hud-value' });
+  const stationEl = h('span', { class: 'hud-small' });
+  const stationBar = h('span', { class: 'station-fill' });
+  const deckEl = h('span', { class: 'hud-small' });
+  const hintEl = h('div', { class: 'hint' });
+  const previewInfo = h('div', { class: 'preview-info' });
+  const handEl = h('div', { class: 'hand' });
+  const actionsEl = h(
+    'div',
+    { class: 'actions' },
+    h('button', { class: 'round', 'aria-label': t('action.cancel'), onclick: () => cancelPreview() }, '✕'),
+    h('button', { class: 'round', 'aria-label': t('action.rotate'), onclick: () => rotate() }, '↻'),
+    h('button', { class: 'round confirm', 'aria-label': t('action.confirm'), onclick: () => confirm() }, '✓'),
+  );
+  const top = h(
+    'div',
+    { class: 'hud' },
+    h('button', { class: 'icon-btn', 'aria-label': t('hud.menu'), onclick: () => openPause() }, '☰'),
+    h('div', { class: 'hud-score' }, h('span', { class: 'hud-label' }, t('hud.score')), scoreEl),
+    h('div', { class: 'hud-station' }, stationEl, h('span', { class: 'station-bar' }, stationBar)),
+    deckEl,
+  );
+  const recenter = h(
+    'button',
+    { class: 'icon-btn floating-btn', 'aria-label': t('action.recenter'), onclick: () => { board.fitBoard(state); requestRender(); } },
+    '⌖',
+  );
+  const bottom = h('div', { class: 'bottom' }, hintEl, previewInfo, actionsEl, handEl);
+  const root = h(
+    'div',
+    { class: 'screen game', style: `background: linear-gradient(${theme.sky[0]}, ${theme.sky[1]})` },
+    canvas,
+    top,
+    recenter,
+    bottom,
+  );
+  mount(root, () => {
+    detach();
+    window.removeEventListener('resize', onResize);
+    cancelAnimationFrame(raf);
+    board.dispose();
+  });
+
+  const board = new Board3D(canvas, theme, settings.quality);
+  const updateInsets = () => {
+    board.setInsets(top.getBoundingClientRect().height, bottom.getBoundingClientRect().height);
+  };
+
+  let raf = 0;
+  function requestRender() {
+    if (raf) return;
+    raf = requestAnimationFrame(frame);
+  }
+  function frame(now: number) {
+    raf = 0;
+    let popT: { hex: Hex; t: number } | null = null;
+    if (pop) {
+      const tt = Math.min(1, (now - pop.start) / 280);
+      popT = { hex: pop.hex, t: tt };
+      if (tt >= 1) pop = null;
+    }
+    const card = state.hand[selected];
+    board.render({
+      state,
+      highlights: !viewingOnly && card && !preview ? placeableCells(state) : [],
+      preview: preview && card ? { hex: preview, edges: rotateEdges(card.edges, rot), id: `${key(preview)}|${card.id}|${rot}` } : null,
+      pop: popT,
+    });
+    if (pop) requestRender();
+  }
+
+  function onResize() {
+    board.resize();
+    updateInsets();
+    requestRender();
+  }
+  window.addEventListener('resize', onResize);
+
+  const detach = attachInput(canvas, {
+    onTap(x, y) {
+      if (viewingOnly || state.over) return;
+      const hex = board.screenToHex(x, y);
+      const card = state.hand[selected];
+      if (!card) return;
+      if (hex && canPlace(state, hex)) {
+        if (preview && key(preview) === key(hex)) {
+          rot = (rot + 1) % 6;
+        } else {
+          preview = hex;
+          rot = bestRotation(state, hex, card.edges, rot);
+        }
+        vibrate(8);
+      } else {
+        preview = null;
+      }
+      refreshUI();
+    },
+    onPan(dx, dy) {
+      board.pan(dx, dy);
+      requestRender();
+    },
+    onZoom(f) {
+      board.zoom(f);
+      requestRender();
+    },
+    onRotate(da) {
+      board.rotate(da);
+      requestRender();
+    },
+  });
+
+  function selectCard(i: number) {
+    if (i === selected) {
+      rotate();
+      return;
+    }
+    selected = i;
+    rot = 0;
+    const card = state.hand[selected];
+    if (preview && card) rot = bestRotation(state, preview, card.edges, 0);
+    vibrate(8);
+    refreshUI();
+  }
+
+  function rotate() {
+    rot = (rot + 1) % 6;
+    refreshUI();
+  }
+
+  function cancelPreview() {
+    preview = null;
+    refreshUI();
+  }
+
+  function confirm() {
+    if (!preview || state.over) return;
+    const hex = preview;
+    const res = placeTile(state, selected, hex, rot);
+    pop = { hex, start: performance.now() };
+    preview = null;
+    rot = 0;
+    selected = Math.min(selected, Math.max(0, state.hand.length - 1));
+    vibrate(res.perfect ? 40 : 15);
+    if (res.perfect) toast(t('toast.perfect', { n: res.points }));
+    else if (res.newStation) toast(t('toast.station', { n: stationOf(state).station }));
+    if (state.over) {
+      const isBest = save.submitScore(theme.id, state.score);
+      save.clearGame(theme.id);
+      refreshUI();
+      setTimeout(() => showGameOver(isBest), 650);
+    } else {
+      save.saveGame(state);
+      refreshUI();
+    }
+  }
+
+  function refreshUI() {
+    scoreEl.textContent = String(state.score);
+    const st = stationOf(state);
+    stationEl.textContent = t('hud.station', { n: st.station });
+    stationBar.style.width = `${(st.progress / 10) * 100}%`;
+    deckEl.textContent = t('hud.deck', { n: tilesLeft(state) });
+
+    const card = state.hand[selected];
+    if (viewingOnly) {
+      hintEl.textContent = '';
+    } else if (preview && card) {
+      const ev = evaluate(state, preview, rotateEdges(card.edges, rot));
+      hintEl.textContent = t('hint.adjust');
+      previewInfo.textContent = `${t('preview.points', { n: ev.points })} · ${t('preview.matches', { m: ev.matches, n: ev.neighbors })}`;
+    } else {
+      hintEl.textContent = t('hint.pickCard');
+    }
+    previewInfo.hidden = !preview;
+    actionsEl.hidden = !preview;
+
+    handEl.replaceChildren(
+      ...state.hand.map((c, i) => {
+        const cv = h('canvas', { class: 'card-canvas', width: 216, height: 288 });
+        drawCard(cv, theme, rotateEdges(c.edges, i === selected ? rot : 0), c.id * 7919);
+        return h(
+          'button',
+          { class: `card${i === selected ? ' selected' : ''}`, onclick: () => selectCard(i) },
+          cv,
+        );
+      }),
+    );
+    handEl.hidden = viewingOnly;
+    requestRender();
+  }
+
+  function openPause() {
+    const overlay = h(
+      'div',
+      { class: 'overlay' },
+      h(
+        'div',
+        { class: 'panel' },
+        h('h2', { class: 'panel-title' }, t('pause.title')),
+        h('button', { class: 'btn primary', onclick: () => overlay.remove() }, t('pause.resume')),
+        h(
+          'button',
+          {
+            class: 'btn',
+            onclick: async () => {
+              overlay.remove();
+              if (state.over || (await confirmDialog(t('menu.confirmNew'), t('common.yes'), t('common.no')))) {
+                save.clearGame(theme.id);
+                startGame(theme, null);
+              }
+            },
+          },
+          t('pause.restart'),
+        ),
+        h('button', { class: 'btn', onclick: () => { overlay.remove(); showMenu(); } }, t('pause.menu')),
+      ),
+    );
+    root.append(overlay);
+  }
+
+  function showGameOver(isBest: boolean) {
+    const st = stationOf(state);
+    const overlay = h(
+      'div',
+      { class: 'overlay' },
+      h(
+        'div',
+        { class: 'panel' },
+        h('h2', { class: 'panel-title' }, t('over.title')),
+        isBest ? h('div', { class: 'badge' }, t('over.newBest')) : null,
+        h('div', { class: 'big-score' }, String(state.score)),
+        h(
+          'dl',
+          { class: 'stats' },
+          h('dt', {}, t('over.stations')), h('dd', {}, String(st.station - (st.progress === 0 ? 1 : 0))),
+          h('dt', {}, t('over.tiles')), h('dd', {}, String(state.placed)),
+          h('dt', {}, t('over.perfects')), h('dd', {}, String(state.perfects)),
+        ),
+        !isBest ? h('p', { class: 'muted' }, t('over.best', { score: save.getBest(theme.id) })) : null,
+        h('button', { class: 'btn primary', onclick: () => startGame(theme, null) }, t('over.again')),
+        h(
+          'button',
+          {
+            class: 'btn',
+            onclick: () => {
+              overlay.remove();
+              viewingOnly = true;
+              board.fitBoard(state);
+              refreshUI();
+            },
+          },
+          t('over.view'),
+        ),
+        h('button', { class: 'btn ghost', onclick: showMenu }, t('over.menu')),
+      ),
+    );
+    root.append(overlay);
+  }
+
+  if (location.search.includes('debug')) {
+    (window as unknown as Record<string, unknown>).__debug = {
+      state,
+      cells: () => placeableCells(state).map((c) => board.hexToScreen(c)),
+    };
+  }
+
+  refreshUI();
+  // 等版面算好再對準地圖
+  requestAnimationFrame(() => {
+    board.resize();
+    updateInsets();
+    board.fitBoard(state);
+    requestRender();
+  });
+}
+
+// ───────────────────────── 啟動 ─────────────────────────
+
+showMenu();
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}

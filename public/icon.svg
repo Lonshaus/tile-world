@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a9dcf5"/>
+      <stop offset="1" stop-color="#f7e6ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="0" fill="url(#sky)"/>
+  <g transform="translate(256 262)">
+    <!-- 三塊六角地塊 -->
+    <g transform="translate(-74 -50)">
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" transform="translate(0 14)" fill="#8a6a4a"/>
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" fill="#5aa857"/>
+      <polygon points="-14,-40 8,4 -36,4" fill="#2f7d3a"/>
+      <polygon points="18,-24 38,14 -2,14" fill="#3c8f45"/>
+    </g>
+    <g transform="translate(74 -50)">
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" transform="translate(0 14)" fill="#8a6a4a"/>
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" fill="#e9cfa6"/>
+      <rect x="-22" y="-8" width="44" height="30" fill="#fbf3e4"/>
+      <polygon points="-30,-6 0,-36 30,-6" fill="#d9534f"/>
+    </g>
+    <g transform="translate(0 78)">
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" transform="translate(0 14)" fill="#8a6a4a"/>
+      <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" fill="#5db6e3"/>
+      <path d="M-30 0 q15 -12 30 0 t30 0" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
