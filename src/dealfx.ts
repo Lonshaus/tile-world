@@ -15,6 +15,7 @@ interface Active {
   rect: DOMRect;
   mesh: THREE.Group;
   geo: THREE.PlaneGeometry;
+  geoBack: THREE.PlaneGeometry;
   base: Float32Array;
   textures: THREE.Texture[];
   onDone: () => void;
@@ -64,8 +65,19 @@ export class DealFx {
     };
     const f = mk(front, THREE.FrontSide);
     const b = mk(back, THREE.BackSide);
+    // 背面另一份幾何：UV 依「翻面前在畫面上的位置」對應，卡背一開始看起來才是正的
+    const geoBack = geo.clone();
+    const pos0 = geo.attributes.position.array as Float32Array;
+    const uvB = geoBack.attributes.uv.array as Float32Array;
+    for (let i = 0, j = 0; i < pos0.length; i += 3, j += 2) {
+      const u = pos0[i] / (rect.width / 2);
+      const v = pos0[i + 1] / (rect.height / 2);
+      uvB[j] = 0.5 - v / 2;
+      uvB[j + 1] = 0.5 - u / 2;
+    }
+    geoBack.attributes.uv.needsUpdate = true;
     const mesh = new THREE.Group();
-    mesh.add(new THREE.Mesh(geo, f.mat), new THREE.Mesh(geo, b.mat));
+    mesh.add(new THREE.Mesh(geo, f.mat), new THREE.Mesh(geoBack, b.mat));
     this.scene.add(mesh);
     this.active.push({
       id,
@@ -74,6 +86,7 @@ export class DealFx {
       rect,
       mesh,
       geo,
+      geoBack,
       base: Float32Array.from(geo.attributes.position.array as Float32Array),
       textures: [f.tex, b.tex],
       onDone,
@@ -127,32 +140,42 @@ export class DealFx {
     a.mesh.rotation.z = (1 - s) * -0.25;
     a.mesh.visible = t >= 0;
 
-    // 2. 掀開：以直的中線為軸翻面，左下角先翹起來，其他部分依距離慢慢跟上，整張牌彎著翻過去
-    //    （翻面前看到的左邊，在牌的正面座標裡是右邊 x > 0）
+    // 2. 掀開：左下角往右上斜斜地掀起來，整張牌彎著翻過去。
+    //    在「正方形座標」(u, v) 裡沿左上到右下的對角線翻，再換算回長方形，
+    //    翻完才會剛好落回原本的位置。翻面前畫面上的左下角，是正面座標的 (1, 1)。
     const T = Math.min(1, Math.max(0, (t - SLIDE - REST) / FLIP));
     const hw = w / 2;
     const hh = h / 2;
-    const LAG = 0.85; // 越大越軟：先翹起來的角領先其他部分越多
+    const depth = (hw + hh) / 2;
+    const R2 = Math.SQRT1_2;
+    const HALF = Math.SQRT2; // 角落到對角線轉軸的距離
+    const LAG = 0.9; // 越大越軟：先翹起來的角領先其他部分越多
     const lift = Math.sin(Math.PI * T) * h * 0.16;
     const pos = a.geo.attributes.position.array as Float32Array;
     for (let i = 0; i < pos.length; i += 3) {
-      const px = a.base[i];
-      const py = a.base[i + 1];
-      // 0 = 左下角（最先動），1 = 右上角（最後動）
-      const lead = 0.7 * ((hw - px) / w) + 0.3 * ((py + hh) / h);
+      const u = a.base[i] / hw;
+      const v = a.base[i + 1] / hh;
+      const rr = (u + v) * R2; // 到轉軸的距離（左下角這側為正）
+      const ss = (u - v) * R2; // 沿轉軸的位置
+      const lead = (HALF - rr) / (2 * HALF); // 0 = 左下角最先動
       const q = ease(T * (1 + LAG) - LAG * lead);
       const phi = Math.PI * (1 - q);
-      pos[i] = px * Math.cos(phi);
-      pos[i + 1] = py;
-      pos[i + 2] = px * Math.sin(phi) + lift;
+      const along = rr * Math.cos(phi);
+      pos[i] = (along * R2 + ss * R2) * hw;
+      pos[i + 1] = (along * R2 - ss * R2) * hh;
+      pos[i + 2] = rr * Math.sin(phi) * depth + lift;
     }
     a.geo.attributes.position.needsUpdate = true;
     a.geo.computeVertexNormals();
+    (a.geoBack.attributes.position.array as Float32Array).set(pos);
+    a.geoBack.attributes.position.needsUpdate = true;
+    a.geoBack.computeVertexNormals();
   }
 
   private finish(a: Active) {
     this.scene.remove(a.mesh);
     a.geo.dispose();
+    a.geoBack.dispose();
     a.textures.forEach((x) => x.dispose());
     a.mesh.children.forEach((m) => ((m as THREE.Mesh).material as THREE.Material).dispose());
     this.active.splice(this.active.indexOf(a), 1);
