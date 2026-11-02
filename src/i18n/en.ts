@@ -8,7 +8,6 @@ export const en: Dict = {
   'menu.newGame': 'New game',
   'menu.settings': 'Settings',
   'menu.best': 'Best {score}',
-  'menu.comingSoon': 'Coming soon',
   'menu.confirmNew': 'Abandon your current run and start a new one?',
   'theme.floating': 'Floating Isles',
   'theme.taiwan': 'Taiwan Streets',

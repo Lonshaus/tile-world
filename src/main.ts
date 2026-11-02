@@ -40,21 +40,21 @@ function mount(el: HTMLElement, cleanup?: () => void) {
 function showMenu() {
   const cards = THEMES.map((th) => {
     const best = save.getBest(th.id);
-    const hasSave = th.enabled && save.loadGame(th.id) !== null;
+    const existing = save.loadGame(th.id);
     return h(
       'button',
       {
-        class: `theme-card${th.enabled ? '' : ' disabled'}`,
+        class: 'theme-card',
         style: `--accent:${th.accent}`,
-        disabled: !th.enabled,
-        onclick: () => onThemePicked(th, hasSave),
+        // 有存檔就直接繼續；開新局從遊戲內選單
+        onclick: () => startGame(th, existing),
       },
       themeThumb(th),
       h('span', { class: 'theme-name' }, t(th.nameKey)),
       h(
         'span',
         { class: 'theme-meta' },
-        !th.enabled ? t('menu.comingSoon') : hasSave ? `▶ ${t('menu.continue')}` : best > 0 ? t('menu.best', { score: best }) : '',
+        existing ? `▶ ${t('menu.continue')}` : best > 0 ? t('menu.best', { score: best }) : '',
       ),
     );
   });
@@ -76,20 +76,10 @@ function themeThumb(th: Theme): HTMLCanvasElement {
   const c = h('canvas', { class: 'theme-thumb', width: 320, height: 240 });
   const ctx = c.getContext('2d')!;
   drawWoodPanel(ctx, 320, 240, th.id.length * 97, 20);
-  if (th.enabled) {
-    drawCarvedHex(ctx, th, [0, 0, 3, 3, 2, 0], 112, 96, 50, 7);
-    drawCarvedHex(ctx, th, [4, 4, 0, 0, 1, 1], 199, 96, 50, 11);
-    drawCarvedHex(ctx, th, [1, 2, 2, 1, 3, 3], 155, 171, 50, 3);
-  }
+  drawCarvedHex(ctx, th, [0, 0, 3, 3, 2, 0], 112, 96, 50, 7);
+  drawCarvedHex(ctx, th, [4, 4, 0, 0, 1, 1], 199, 96, 50, 11);
+  drawCarvedHex(ctx, th, [1, 2, 2, 1, 3, 3], 155, 171, 50, 3);
   return c;
-}
-
-async function onThemePicked(th: Theme, hasSave: boolean) {
-  if (!th.enabled) return;
-  if (!hasSave) return startGame(th, null);
-  const existing = save.loadGame(th.id);
-  // 有存檔：直接繼續；開新局從遊戲內選單
-  startGame(th, existing);
 }
 
 // ───────────────────────── 設定 ─────────────────────────

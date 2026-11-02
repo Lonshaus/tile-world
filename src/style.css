@@ -126,11 +126,6 @@ button {
   box-shadow: var(--shadow);
   text-align: left;
 }
-.theme-card.disabled {
-  opacity: 0.5;
-  box-shadow: none;
-  cursor: default;
-}
 .theme-thumb {
   width: 100%;
   aspect-ratio: 4 / 3;

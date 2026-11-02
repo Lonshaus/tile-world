@@ -1,6 +1,25 @@
 import type { StringKey } from '../i18n';
 import type { Terrain } from '../game';
 
+/** 卡牌刻線圖案的種類 */
+export type Glyph =
+  | 'tree'
+  | 'grass'
+  | 'wave'
+  | 'house'
+  | 'mountain'
+  | 'rice'
+  | 'tea'
+  | 'kelp'
+  | 'shell'
+  | 'coral'
+  | 'anchor'
+  | 'swirl'
+  | 'rock'
+  | 'stars'
+  | 'station'
+  | 'planet';
+
 /** 穩定亂數（0..1） */
 export type Rand = () => number;
 
@@ -8,10 +27,11 @@ export type Rand = () => number;
  * 3D 裝飾的基本形狀，主題用這些組合出樹、房子、山…
  * 座標以「扇形錨點」為原點（地形表面上），單位 = 地塊半徑
  *  cone：底在 y=0 的六角錐；pyramid：四角錐（屋頂）；box：底在 y=0；
- *  ball：低面數球，中心在 y=sy；cylinder：底在 y=0 的六角柱
+ *  ball：低面數球，中心在 y=sy；cylinder：底在 y=0 的六角柱；
+ *  torus：平放的圓環（行星環），中心在 y=0
  */
 export interface DecorPiece {
-  shape: 'cone' | 'pyramid' | 'box' | 'ball' | 'cylinder';
+  shape: 'cone' | 'pyramid' | 'box' | 'ball' | 'cylinder' | 'torus';
   x: number;
   y: number;
   z: number;
@@ -20,6 +40,9 @@ export interface DecorPiece {
   sy: number;
   sz: number;
   rotY?: number;
+  /** 傾斜（沉船、斜插的東西） */
+  rotX?: number;
+  rotZ?: number;
   color: string;
   /** 錐形的面數（預設 6） */
   segments?: number;
@@ -28,7 +51,6 @@ export interface DecorPiece {
 export interface Theme {
   id: string;
   nameKey: StringKey;
-  enabled: boolean;
   /** 選單卡片上的代表色 */
   accent: string;
   /** 背景漸層（上 → 下），CSS 色碼 */
@@ -39,6 +61,8 @@ export interface Theme {
   heights: [number, number, number, number, number];
   /** 底座木頭顏色 */
   base: string;
+  /** 卡牌上五種地形的刻線圖案 */
+  glyphs: [Glyph, Glyph, Glyph, Glyph, Glyph];
   /** 每個扇形的 3D 裝飾 */
   decor(terrain: Terrain, rand: Rand): DecorPiece[];
 }

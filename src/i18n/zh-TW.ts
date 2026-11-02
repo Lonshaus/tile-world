@@ -7,7 +7,6 @@ export const zhTW = {
   'menu.newGame': '開新局',
   'menu.settings': '設定',
   'menu.best': '最高 {score}',
-  'menu.comingSoon': '即將推出',
   'menu.confirmNew': '要放棄目前的進度，重新開一局嗎？',
   'theme.floating': '浮島',
   'theme.taiwan': '台灣街景',

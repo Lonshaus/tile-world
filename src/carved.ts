@@ -1,7 +1,7 @@
 // 木雕風的 2D 卡牌：木板 + 雕刻凹槽 + 上漆的地形 + 刻線圖案
 import { Terrain } from './game';
 import { corner } from './hex';
-import type { Theme } from './themes/types';
+import type { Glyph, Theme } from './themes/types';
 import { seededRand } from './themes/types';
 
 type Ctx = CanvasRenderingContext2D;
@@ -64,10 +64,10 @@ function engrave(ctx: Ctx, s: number, draw: () => void) {
   ctx.restore();
 }
 
-function glyph(ctx: Ctx, terrain: Terrain, x: number, y: number, g: number) {
+function glyph(ctx: Ctx, kind: Glyph, x: number, y: number, g: number) {
   ctx.beginPath();
-  switch (terrain) {
-    case Terrain.Green: // 樹
+  switch (kind) {
+    case 'tree': // 樹
       ctx.moveTo(x, y - g);
       ctx.lineTo(x + g * 0.6, y + g * 0.4);
       ctx.lineTo(x - g * 0.6, y + g * 0.4);
@@ -75,20 +75,20 @@ function glyph(ctx: Ctx, terrain: Terrain, x: number, y: number, g: number) {
       ctx.moveTo(x, y + g * 0.4);
       ctx.lineTo(x, y + g * 0.85);
       break;
-    case Terrain.Open: // 草
+    case 'grass': // 草
       for (const dx of [-0.45, 0, 0.45]) {
         ctx.moveTo(x + dx * g, y + g * 0.5);
         ctx.lineTo(x + dx * g * 1.5, y - g * 0.35);
       }
       break;
-    case Terrain.Water: // 波浪
+    case 'wave': // 波浪
       for (const dy of [-0.3, 0.35]) {
         ctx.moveTo(x - g * 0.8, y + dy * g);
         ctx.quadraticCurveTo(x - g * 0.4, y + (dy - 0.35) * g, x, y + dy * g);
         ctx.quadraticCurveTo(x + g * 0.4, y + (dy + 0.35) * g, x + g * 0.8, y + dy * g);
       }
       break;
-    case Terrain.Settlement: // 房子
+    case 'house': // 房子
       ctx.moveTo(x - g * 0.55, y + g * 0.7);
       ctx.lineTo(x - g * 0.55, y - g * 0.05);
       ctx.lineTo(x, y - g * 0.65);
@@ -100,12 +100,102 @@ function glyph(ctx: Ctx, terrain: Terrain, x: number, y: number, g: number) {
       ctx.lineTo(x + g * 0.12, y + g * 0.3);
       ctx.lineTo(x + g * 0.12, y + g * 0.7);
       break;
-    case Terrain.Highland: // 山
+    case 'mountain': // 山
       ctx.moveTo(x - g * 0.9, y + g * 0.55);
       ctx.lineTo(x - g * 0.3, y - g * 0.55);
       ctx.lineTo(x + g * 0.05, y + g * 0.05);
       ctx.lineTo(x + g * 0.35, y - g * 0.3);
       ctx.lineTo(x + g * 0.9, y + g * 0.55);
+      break;
+    case 'rice': // 稻穗：彎下來的穗
+      for (const dx of [-0.4, 0.4]) {
+        ctx.moveTo(x + dx * g, y + g * 0.8);
+        ctx.quadraticCurveTo(x + dx * g, y - g * 0.4, x + dx * g + g * 0.45, y - g * 0.2);
+        ctx.moveTo(x + dx * g, y + g * 0.1);
+        ctx.lineTo(x + dx * g + g * 0.25, y - g * 0.05);
+      }
+      break;
+    case 'tea': // 茶園：山坡上一行行茶樹
+      ctx.moveTo(x - g * 0.9, y + g * 0.6);
+      ctx.quadraticCurveTo(x, y - g * 0.9, x + g * 0.9, y + g * 0.6);
+      for (const dy of [0.05, 0.4]) {
+        ctx.moveTo(x - g * 0.55, y + dy * g);
+        ctx.quadraticCurveTo(x, y + (dy - 0.3) * g, x + g * 0.55, y + dy * g);
+      }
+      break;
+    case 'kelp': // 海藻
+      for (const dx of [-0.35, 0.3]) {
+        ctx.moveTo(x + dx * g, y + g * 0.85);
+        ctx.bezierCurveTo(x + (dx - 0.35) * g, y + g * 0.3, x + (dx + 0.35) * g, y - g * 0.2, x + dx * g, y - g * 0.9);
+      }
+      break;
+    case 'shell': // 扇貝
+      ctx.moveTo(x - g * 0.7, y + g * 0.3);
+      ctx.quadraticCurveTo(x, y - g * 1.0, x + g * 0.7, y + g * 0.3);
+      ctx.lineTo(x + g * 0.2, y + g * 0.6);
+      ctx.lineTo(x - g * 0.2, y + g * 0.6);
+      ctx.closePath();
+      for (const dx of [-0.3, 0, 0.3]) {
+        ctx.moveTo(x + dx * g * 0.5, y + g * 0.5);
+        ctx.lineTo(x + dx * g * 1.4, y - g * 0.2);
+      }
+      break;
+    case 'coral': // 珊瑚：分岔的枝
+      ctx.moveTo(x, y + g * 0.85);
+      ctx.lineTo(x, y - g * 0.1);
+      ctx.lineTo(x - g * 0.45, y - g * 0.6);
+      ctx.moveTo(x, y - g * 0.1);
+      ctx.lineTo(x + g * 0.4, y - g * 0.7);
+      ctx.moveTo(x, y + g * 0.3);
+      ctx.lineTo(x + g * 0.5, y);
+      break;
+    case 'anchor': // 船錨
+      ctx.moveTo(x, y - g * 0.8);
+      ctx.lineTo(x, y + g * 0.7);
+      ctx.moveTo(x - g * 0.35, y - g * 0.4);
+      ctx.lineTo(x + g * 0.35, y - g * 0.4);
+      ctx.moveTo(x - g * 0.65, y + g * 0.2);
+      ctx.quadraticCurveTo(x - g * 0.55, y + g * 0.75, x, y + g * 0.7);
+      ctx.quadraticCurveTo(x + g * 0.55, y + g * 0.75, x + g * 0.65, y + g * 0.2);
+      break;
+    case 'swirl': // 星雲漩渦
+      ctx.moveTo(x, y);
+      for (let a = 0; a < Math.PI * 3.2; a += 0.3) {
+        const r = g * 0.08 + (a / (Math.PI * 3.2)) * g * 0.8;
+        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
+      break;
+    case 'rock': // 隕石
+      ctx.moveTo(x - g * 0.7, y);
+      ctx.lineTo(x - g * 0.3, y - g * 0.6);
+      ctx.lineTo(x + g * 0.4, y - g * 0.5);
+      ctx.lineTo(x + g * 0.75, y + g * 0.1);
+      ctx.lineTo(x + g * 0.2, y + g * 0.6);
+      ctx.lineTo(x - g * 0.45, y + g * 0.45);
+      ctx.closePath();
+      ctx.moveTo(x - g * 0.05, y - g * 0.1);
+      ctx.arc(x - g * 0.1, y - g * 0.1, g * 0.12, 0, Math.PI * 2);
+      break;
+    case 'stars': // 星星
+      for (const [dx, dy, s] of [[-0.4, -0.3, 0.35], [0.4, 0.3, 0.3]]) {
+        const cx = x + dx * g;
+        const cy = y + dy * g;
+        ctx.moveTo(cx - s * g, cy);
+        ctx.lineTo(cx + s * g, cy);
+        ctx.moveTo(cx, cy - s * g);
+        ctx.lineTo(cx, cy + s * g);
+      }
+      break;
+    case 'station': // 太空站：本體 + 兩片太陽能板
+      ctx.rect(x - g * 0.2, y - g * 0.3, g * 0.4, g * 0.6);
+      ctx.rect(x - g * 0.85, y - g * 0.2, g * 0.5, g * 0.4);
+      ctx.rect(x + g * 0.35, y - g * 0.2, g * 0.5, g * 0.4);
+      break;
+    case 'planet': // 有環的行星
+      ctx.moveTo(x + g * 0.45, y);
+      ctx.arc(x, y, g * 0.45, 0, Math.PI * 2);
+      ctx.moveTo(x + g * 0.95, y - g * 0.1);
+      ctx.ellipse(x, y, g * 0.95, g * 0.28, -0.2, 0, Math.PI * 2);
       break;
   }
 }
@@ -180,7 +270,7 @@ export function drawCarvedHex(ctx: Ctx, theme: Theme, edges: readonly Terrain[],
     const b = corner(d + 1, ri);
     const x = cx + (a.x + b.x) * 0.31;
     const y = cy + (a.y + b.y) * 0.31;
-    engrave(ctx, r * 4, () => glyph(ctx, edges[d], x, y, r * 0.15));
+    engrave(ctx, r * 4, () => glyph(ctx, theme.glyphs[edges[d]], x, y, r * 0.15));
   }
 }
 

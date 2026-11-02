@@ -158,6 +158,7 @@ const PRIMS = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   ball: new THREE.IcosahedronGeometry(1, 0).translate(0, 1, 0),
   cylinder: new THREE.CylinderGeometry(1, 1, 1, 6).translate(0, 0.5, 0),
+  torus: new THREE.TorusGeometry(1, 0.12, 4, 16).rotateX(Math.PI / 2),
 };
 
 function primFor(p: DecorPiece): THREE.BufferGeometry {
@@ -172,6 +173,8 @@ function primFor(p: DecorPiece): THREE.BufferGeometry {
       return PRIMS.ball;
     case 'cylinder':
       return PRIMS.cylinder;
+    case 'torus':
+      return PRIMS.torus;
   }
 }
 
@@ -181,7 +184,7 @@ const tmpE = new THREE.Euler();
 
 function addDecor(b: Builder, p: DecorPiece, ax: number, ay: number, az: number) {
   const g = primFor(p).clone();
-  tmpQ.setFromEuler(tmpE.set(0, p.rotY ?? 0, 0));
+  tmpQ.setFromEuler(tmpE.set(p.rotX ?? 0, p.rotY ?? 0, p.rotZ ?? 0, 'YXZ'));
   tmpM.compose(v(ax + p.x, ay + p.y, az + p.z), tmpQ, v(p.sx, p.sy, p.sz));
   g.applyMatrix4(tmpM);
   b.addGeometry(g, b.color(p.color));

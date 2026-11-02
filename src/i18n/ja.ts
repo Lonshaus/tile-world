@@ -8,7 +8,6 @@ export const ja: Dict = {
   'menu.newGame': 'はじめから',
   'menu.settings': '設定',
   'menu.best': 'ベスト {score}',
-  'menu.comingSoon': '近日公開',
   'menu.confirmNew': '今の進行状況を破棄して、新しく始めますか？',
   'theme.floating': '浮き島',
   'theme.taiwan': '台湾の街並み',

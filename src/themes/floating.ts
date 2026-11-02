@@ -1,9 +1,7 @@
 // 浮島主題：雲海上的木製小島
 import { Terrain } from '../game';
 import type { DecorPiece, Rand, Theme } from './types';
-
-const jitter = (rand: Rand, r: number) => (rand() - 0.5) * 2 * r;
-const pick = <T>(rand: Rand, arr: readonly T[]) => arr[Math.floor(rand() * arr.length)];
+import { jitter, pick } from './util';
 
 function tree(rand: Rand, x: number, z: number, scale: number): DecorPiece[] {
   const green = pick(rand, ['#4f7a3f', '#5b8746', '#476f39']);
@@ -37,13 +35,13 @@ function mountain(rand: Rand, x: number, z: number, scale: number): DecorPiece[]
 export const floating: Theme = {
   id: 'floating',
   nameKey: 'theme.floating',
-  enabled: true,
   accent: '#8fb9cf',
   sky: ['#b9d9e8', '#efe4d6'],
   // 偏霧、偏暖的漆色，避免塑膠感
   terrain: ['#6f9455', '#c3c27a', '#6f9fb8', '#d8bf94', '#a2968a'],
   heights: [0.06, 0.045, 0.02, 0.055, 0.08],
   base: '#a77b4f',
+  glyphs: ['tree', 'grass', 'wave', 'house', 'mountain'],
   decor(terrain, rand) {
     switch (terrain) {
       case Terrain.Green: {
