@@ -15,7 +15,7 @@ import { Hex, key } from './hex';
 import { LANGS, Lang, StringKey, detectLang, setLang, t } from './i18n';
 import { attachInput } from './input';
 import { Board3D } from './three/board3d';
-import { CardText, drawCarvedHex, drawPlayingCard, drawWoodPanel } from './carved';
+import { CardText, drawCardBack, drawCarvedHex, drawPlayingCard, drawWoodPanel } from './carved';
 import * as save from './save';
 import { THEMES, Theme } from './themes';
 import { confirmDialog, h, toast } from './dom';
@@ -51,6 +51,20 @@ function cardText(theme: Theme, edges: readonly number[]): CardText {
     name: order.slice(0, 2).map(name).join('・'),
     rows: order.map((i) => ({ color: theme.terrain[i], label: name(i), value: t('card.edges', { n: counts[i] }) })),
   };
+}
+
+const DEAL_DURATION = 750;
+const DEAL_STAGGER = 150;
+
+let backImage: HTMLCanvasElement | null = null;
+function cardBackImage(): HTMLCanvasElement {
+  if (!backImage) {
+    backImage = document.createElement('canvas');
+    backImage.width = CARD_W;
+    backImage.height = CARD_H;
+    drawCardBack(backImage);
+  }
+  return backImage;
 }
 
 // ───────────────────────── 主選單 ─────────────────────────
@@ -319,7 +333,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     },
   });
 
-  const dealtCards = new Set<number>();
+  const dealtAt = new Map<number, number>();
 
   // 鏡頭轉動時，卡牌插圖跟著換角度（每個畫面最多重畫一次）
   let handRaf = 0;
@@ -403,20 +417,27 @@ function startGame(theme: Theme, existing: GameState | null) {
     let dealIndex = 0;
     handEl.replaceChildren(
       ...state.hand.map((c, i) => {
-        const cv = h('canvas', { class: 'card-canvas', width: CARD_W, height: CARD_H });
-        // 第一次出現的牌播放發牌動畫，開局的幾張依序發出
-        if (!dealtCards.has(c.id)) {
-          dealtCards.add(c.id);
-          cv.classList.add('deal');
-          cv.style.animationDelay = `${dealIndex++ * 120}ms`;
-        }
+        const front = h('canvas', { class: 'card-face', width: CARD_W, height: CARD_H });
         const edges = rotateEdges(c.edges, i === selected ? rot : 0);
         const art = board.tileArt(edges, c.id * 7919, CARD_W, Math.round(CARD_H * 0.52));
-        drawPlayingCard(cv, art, theme.sky, cardText(theme, c.edges), c.id * 7919);
+        drawPlayingCard(front, art, theme.sky, cardText(theme, c.edges), c.id * 7919);
+        const back = h('canvas', { class: 'card-face card-back', width: CARD_W, height: CARD_H });
+        back.getContext('2d')!.drawImage(cardBackImage(), 0, 0);
+        const inner = h('div', { class: 'card-inner' }, front, back);
+
+        // 發牌動畫：背面朝上滑進來，再翻成正面；開局的幾張依序發出。
+        // 動畫途中畫面重繪時，用負的延遲接著播，不會從頭重來
+        const now = performance.now();
+        if (!dealtAt.has(c.id)) dealtAt.set(c.id, now + dealIndex++ * DEAL_STAGGER);
+        const start = dealtAt.get(c.id)!;
+        if (now - start < DEAL_DURATION) {
+          inner.classList.add('deal');
+          inner.style.animationDelay = `${start - now}ms`;
+        }
         return h(
           'button',
           { class: `card${i === selected ? ' selected' : ''}`, onclick: () => selectCard(i) },
-          cv,
+          inner,
         );
       }),
     );

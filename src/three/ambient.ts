@@ -64,7 +64,7 @@ export class Ambient {
   constructor(opts: NonNullable<Theme['ambient']>, castShadow: boolean) {
     const rand = seededRand(2024);
     if (opts.clouds) {
-      const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true, transparent: true, opacity: 0.92 });
+      const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true, transparent: true, opacity: 0.7, depthWrite: false });
       const puff = new THREE.IcosahedronGeometry(1, 1);
       for (let i = 0; i < 12; i++) {
         const cloud = new THREE.Group();
@@ -72,8 +72,8 @@ export class Ambient {
         for (let j = 0; j < n; j++) {
           const m = new THREE.Mesh(puff, mat);
           const s = 0.16 + rand() * 0.14;
-          m.scale.set(s * 1.3, s * 0.75, s);
-          m.position.set((j - n / 2) * 0.2 + rand() * 0.1, rand() * 0.07, rand() * 0.18 - 0.09);
+          m.scale.set(s * 1.8, s * 0.18, s * 1.1); // 薄薄一層
+          m.position.set((j - n / 2) * 0.28 + rand() * 0.1, rand() * 0.02, rand() * 0.2 - 0.1);
           m.castShadow = castShadow;
           cloud.add(m);
         }

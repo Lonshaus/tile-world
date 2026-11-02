@@ -337,40 +337,57 @@ button {
   background: transparent;
   padding: 0;
   display: block;
-  box-shadow: 0 4px 10px rgba(50, 28, 10, 0.3);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition: transform 0.18s ease;
 }
 .card:active {
   transform: scale(0.97);
 }
 .card.selected {
   transform: translateY(-14px);
+}
+.card.selected .card-face {
   box-shadow: 0 14px 18px rgba(50, 28, 10, 0.35);
 }
 .card.selected:active {
   transform: translateY(-14px) scale(0.97);
 }
-.card-canvas {
+/* 卡牌正反面：翻牌用 3D 轉動，背對鏡頭的那一面隱藏 */
+.card {
+  perspective: 700px;
+}
+.card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+.card-face {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   border-radius: 9px;
+  box-shadow: 0 4px 10px rgba(50, 28, 10, 0.3);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
-/* 發牌：從右邊滑進來並翻成正面 */
-.card-canvas.deal {
-  animation: deal 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+.card-back {
+  transform: rotateY(180deg);
+}
+/* 發牌：背面朝上從右邊滑進來，停好之後翻成正面 */
+.card-inner.deal {
+  animation: deal 0.75s ease-out backwards;
 }
 @keyframes deal {
   0% {
-    opacity: 0;
-    transform: translate(140%, 30%) rotate(18deg) rotateY(90deg);
+    transform: translate(170%, 25%) rotate(14deg) rotateY(180deg);
   }
-  60% {
-    opacity: 1;
-    transform: translate(-4%, -4%) rotate(-2deg) rotateY(0deg);
+  50% {
+    transform: translate(0, 0) rotate(0deg) rotateY(180deg);
   }
   100% {
-    transform: none;
+    transform: rotateY(0deg);
   }
 }
 

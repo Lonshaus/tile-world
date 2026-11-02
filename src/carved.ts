@@ -365,3 +365,29 @@ export function drawPlayingCard(canvas: HTMLCanvasElement, art: CanvasImageSourc
   }
   ctx.restore();
 }
+
+/** 卡背：木紋底，中間刻一個六角形徽記（沒有邊框） */
+export function drawCardBack(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext('2d')!;
+  const { width: w, height: h } = canvas;
+  const u = w / 100;
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  roundRect(ctx, 0, 0, w, h, 8 * u);
+  ctx.clip();
+  const wood = ctx.createLinearGradient(0, 0, w, h);
+  wood.addColorStop(0, '#b4844f');
+  wood.addColorStop(1, '#8f6338');
+  ctx.fillStyle = wood;
+  ctx.fillRect(0, 0, w, h);
+  grain(ctx, 0, 0, w, h, 31337);
+  // 中央徽記：大六角形裡套三個小六角形
+  const cx = w / 2;
+  const cy = h / 2;
+  engrave(ctx, w, () => hexPath(ctx, cx, cy, 26 * u));
+  engrave(ctx, w, () => hexPath(ctx, cx, cy, 20 * u));
+  for (const [dx, dy] of [[0, -7], [-6.1, 3.5], [6.1, 3.5]]) {
+    engrave(ctx, w, () => hexPath(ctx, cx + dx * u, cy + dy * u, 6 * u));
+  }
+  ctx.restore();
+}
