@@ -23,10 +23,10 @@ export interface BoardInput {
   pop: { hex: Hex; t: number } | null;
 }
 
-// 鏡頭：拉近、從約 40 度斜上方往前看，遠處淡進霧裡，像在看一片風景
+// 鏡頭：從約 40 度斜上方看，水平方向斜轉一點、距離稍遠，遠處淡進霧裡
 const ELEVATION = THREE.MathUtils.degToRad(40);
 const FOV = 42;
-const START_DISTANCE = 8.5;
+const START_DISTANCE = 15;
 const GHOST_LIFT = 0.3;
 
 export class Board3D {
@@ -48,7 +48,7 @@ export class Board3D {
 
   target = new THREE.Vector3(0, BASE_TOP, 0);
   distance = START_DISTANCE;
-  azimuth = 0;
+  azimuth = THREE.MathUtils.degToRad(12);
   topInset = 0;
   bottomInset = 0;
   private w = 1;
@@ -247,7 +247,7 @@ export class Board3D {
     this.target.set((minX + maxX) / 2, BASE_TOP, (minZ + maxZ) / 2);
     // 不把整張地圖塞進畫面，只稍微拉遠，保持近看風景的感覺
     const radius = Math.max(maxX - minX, maxZ - minZ) / 2;
-    this.distance = THREE.MathUtils.clamp(START_DISTANCE + radius * 0.6, START_DISTANCE, 16);
+    this.distance = THREE.MathUtils.clamp(START_DISTANCE + radius * 0.6, START_DISTANCE, 22);
     this.updateCamera();
   }
 
