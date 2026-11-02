@@ -5,7 +5,8 @@ import { Hex, corner, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex 
 import type { Theme } from '../themes/types';
 import { BASE_TOP, buildTileGeometry } from './geom';
 import { makeGrainTexture } from './wood';
-import { Ambient, ERA_THRESHOLDS, Traffic, Ufo } from './ambient';
+import { ERA_THRESHOLDS, Traffic } from './ambient';
+import { Ambient, Ufo } from './wildlife';
 import { WaterLife, makeRippleNormalMap } from './water';
 import type { Quality } from '../save';
 

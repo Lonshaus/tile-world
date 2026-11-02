@@ -1,4 +1,4 @@
-// 水面：會流動的波光，以及河裡的小船、偶爾跳出水面的魚
+// 水面：會流動的波光，以及河裡的帆船、舢舨、鴨子，和偶爾跳出水面的各種魚
 import * as THREE from 'three';
 import { Terrain } from '../game';
 import { corner } from '../hex';
@@ -42,42 +42,82 @@ export function makeRippleNormalMap(size = 256): THREE.CanvasTexture {
   return tex;
 }
 
-function boatModel(rand: () => number): THREE.Group {
+const mat = (color: string, side: THREE.Side = THREE.FrontSide) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, side });
+
+/** 船身（朝 +z） */
+function hull(color: string, len: number): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.035, len, 6, 1).rotateX(Math.PI / 2), mat(color));
+  m.scale.set(0.8, 0.55, 1);
+  m.position.y = 0.012;
+  return m;
+}
+
+/** 帆船 */
+function sailboat(): THREE.Group {
   const g = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: '#7a5233', roughness: 0.9, flatShading: true });
-  const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.035, 0.18, 6, 1).rotateZ(Math.PI / 2), wood);
-  hull.scale.set(1, 0.55, 0.8);
-  hull.position.y = 0.012;
-  g.add(hull);
-  if (rand() < 0.6) {
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 4), wood);
-    mast.position.y = 0.08;
-    const sailGeo = new THREE.BufferGeometry();
-    sailGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0.02, 0, 0, 0.14, 0, -0.08, 0.02, 0], 3));
-    sailGeo.computeVertexNormals();
-    const sail = new THREE.Mesh(sailGeo, new THREE.MeshStandardMaterial({ color: '#f3ead8', roughness: 0.9, side: THREE.DoubleSide }));
-    sail.position.y = 0.01;
-    g.add(mast, sail);
-  }
+  g.add(hull('#7a5233', 0.18));
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 4), mat('#6a4528'));
+  mast.position.y = 0.08;
+  const sailGeo = new THREE.BufferGeometry();
+  sailGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0.02, 0, 0, 0.14, 0, 0, 0.02, -0.08], 3));
+  sailGeo.computeVertexNormals();
+  const sail = new THREE.Mesh(sailGeo, mat('#f3ead8', THREE.DoubleSide));
+  sail.position.y = 0.01;
+  g.add(mast, sail);
   return g;
 }
 
-interface Boat {
-  obj: THREE.Group;
+/** 舢舨：窄長的小船，中間有竹篷，船尾有人搖櫓 */
+function sampan(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(hull('#5f4630', 0.22));
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8, 1, true, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), mat('#a8875a', THREE.DoubleSide));
+  roof.rotation.x = 0;
+  roof.position.set(0, 0.03, 0);
+  const person = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.014, 0.05, 6), mat('#3f4f6a'));
+  person.position.set(0, 0.045, -0.085);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.015, 8), mat('#d8c08a'));
+  hat.position.set(0, 0.078, -0.085);
+  const oar = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.12, 4), mat('#6a4528'));
+  oar.position.set(0.02, 0.03, -0.12);
+  oar.rotation.x = 0.9;
+  oar.name = 'oar';
+  g.add(roof, person, hat, oar);
+  return g;
+}
+
+/** 鴨子（朝 +z） */
+function duck(size: number): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.03, 0), mat('#f2eee2'));
+  body.scale.set(0.8, 0.6, 1.2);
+  body.position.y = 0.012;
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.016, 0), mat('#3f7a4a'));
+  head.position.set(0, 0.04, 0.025);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.006, 0.016, 4).rotateX(Math.PI / 2), mat('#e8a23a'));
+  beak.position.set(0, 0.038, 0.045);
+  g.add(body, head, beak);
+  g.scale.setScalar(size);
+  return g;
+}
+
+/** 在水面一小塊範圍內慢慢漂、會轉向的船或鴨子 */
+interface Floater {
+  objs: THREE.Group[];
   cx: number;
   cz: number;
-  radius: number;
-  speed: number;
-  phase: number;
+  fx: number[];
+  px: number[];
+  range: number;
 }
 
 export class WaterLife {
   readonly group = new THREE.Group();
-  private boats: Boat[] = [];
+  private floaters: Floater[] = [];
   private spots: THREE.Vector3[] = [];
   private fish: THREE.Mesh;
   private splash: THREE.Mesh;
-  private jump: { from: THREE.Vector3; start: number } | null = null;
+  private jump: { from: THREE.Vector3; start: number; height: number } | null = null;
   private nextJump = 3;
   private rand = seededRand(99);
 
@@ -106,30 +146,54 @@ export class WaterLife {
       const x = cx + (a.x + b.x) * 0.3;
       const z = cz + (a.y + b.y) * 0.3;
       this.spots.push(new THREE.Vector3(x, y, z));
-      if (this.boatsEnabled && rand() < 0.18) {
-        const obj = boatModel(rand);
-        obj.position.set(x, y, z);
-        this.boats.push({ obj, cx: x, cz: z, radius: 0.08 + rand() * 0.06, speed: (0.2 + rand() * 0.2) * (rand() < 0.5 ? -1 : 1), phase: rand() * 6 });
-        this.group.add(obj);
+      if (this.boatsEnabled && rand() < 0.22) {
+        // 帆船、舢舨，或一隻母鴨帶兩隻小鴨
+        const roll = rand();
+        const objs = roll < 0.35 ? [sailboat()] : roll < 0.65 ? [sampan()] : [duck(1), duck(0.6), duck(0.6)];
+        for (const o of objs) {
+          o.position.set(x, y, z);
+          this.group.add(o);
+        }
+        this.floaters.push({
+          objs,
+          cx: x,
+          cz: z,
+          fx: [0.15 + rand() * 0.15, 0.11 + rand() * 0.1, 0.4 + rand() * 0.3],
+          px: [rand() * 6, rand() * 6, rand() * 6],
+          range: objs.length > 1 ? 0.13 : 0.1,
+        });
       }
     }
   }
 
   update(time: number) {
-    for (const b of this.boats) {
-      const a = b.phase + time * b.speed;
-      b.obj.position.x = b.cx + Math.cos(a) * b.radius;
-      b.obj.position.z = b.cz + Math.sin(a) * b.radius;
-      b.obj.rotation.y = -a + (b.speed > 0 ? -Math.PI / 2 : Math.PI / 2);
-      // 隨水輕輕晃
-      b.obj.rotation.z = Math.sin(time * 1.7 + b.phase) * 0.08;
-      b.obj.rotation.x = Math.sin(time * 1.3 + b.phase) * 0.05;
+    for (const f of this.floaters) {
+      // 每個東西沿著不規則的路線漂；小鴨跟在母鴨後面（用稍早的位置）
+      const at = (t: number) => ({
+        x: f.cx + Math.sin(t * f.fx[0] + f.px[0]) * f.range + Math.sin(t * f.fx[2] + f.px[2]) * f.range * 0.3,
+        z: f.cz + Math.cos(t * f.fx[1] + f.px[1]) * f.range,
+      });
+      f.objs.forEach((o, i) => {
+        const t = time - i * 0.9;
+        const p = at(t);
+        const q = at(t + 0.05);
+        o.position.x = p.x;
+        o.position.z = p.z;
+        o.rotation.set(Math.sin(time * 1.3 + i) * 0.05, Math.atan2(q.x - p.x, q.z - p.z), Math.sin(time * 1.7 + i) * 0.07, 'YXZ');
+        const oar = o.getObjectByName('oar');
+        if (oar) oar.rotation.z = Math.sin(time * 2.5) * 0.4;
+      });
     }
 
     // 偶爾有魚跳出水面
     if (!this.jump && this.spots.length && time > this.nextJump) {
       const spot = this.spots[Math.floor(this.rand() * this.spots.length)];
-      this.jump = { from: spot.clone(), start: time };
+      // 每次跳的魚不一樣：小橘魚、銀色小魚、大鯉魚
+      const kinds: [string, number, number][] = [['#d9a04a', 1, 0.18], ['#c8d0d8', 0.7, 0.14], ['#e86f3a', 1.6, 0.24]];
+      const [color, size, height] = kinds[Math.floor(this.rand() * kinds.length)];
+      (this.fish.material as THREE.MeshStandardMaterial).color.set(color);
+      this.fish.scale.setScalar(size);
+      this.jump = { from: spot.clone(), start: time, height };
     }
     if (this.jump) {
       const t = (time - this.jump.start) / 0.9;
@@ -141,7 +205,7 @@ export class WaterLife {
         const p = this.jump.from;
         if (t < 1) {
           this.fish.visible = true;
-          this.fish.position.set(p.x + (t - 0.5) * 0.2, p.y + Math.sin(t * Math.PI) * 0.18, p.z);
+          this.fish.position.set(p.x + (t - 0.5) * 0.2, p.y + Math.sin(t * Math.PI) * this.jump.height, p.z);
           this.fish.rotation.set(0, Math.PI / 2, (0.5 - t) * 2.2);
         } else {
           this.fish.visible = false;
