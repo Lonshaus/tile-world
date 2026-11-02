@@ -7,7 +7,7 @@ import { seededRand } from '../themes/types';
 
 /** 底座頂面高度 */
 export const BASE_TOP = 0.2;
-const BASE_BOTTOM = -0.1;
+const BASE_BOTTOM = BASE_TOP - 0.04; // 薄薄一層，地圖上不特別看出厚度
 const BASE_R = 1.0; // 地塊之間無縫相接
 const INLAY_R = 1.0; // 地形一路鋪到邊緣，沒有木框
 const GROOVE = 0.0; // 不同地形之間不留刻痕，靠高低差區分

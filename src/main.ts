@@ -53,7 +53,7 @@ function cardText(theme: Theme, edges: readonly number[]): CardText {
   };
 }
 
-const DEAL_DURATION = 750;
+const DEAL_DURATION = 1100;
 const DEAL_STAGGER = 150;
 
 let backImage: HTMLCanvasElement | null = null;
