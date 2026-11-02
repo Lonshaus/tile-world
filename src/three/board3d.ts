@@ -1,9 +1,9 @@
 // three.js 地圖：地塊、可放置格、預覽、鏡頭（平移／縮放／旋轉）
 import * as THREE from 'three';
 import { GameState, Terrain, rotateEdges } from '../game';
-import { Hex, corner, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex } from '../hex';
+import { Hex, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex } from '../hex';
 import type { Theme } from '../themes/types';
-import { BASE_TOP, buildTileGeometry } from './geom';
+import { BASE_TOP, buildTileGeometry, regionTopGeometry } from './geom';
 import { makeGrainTexture } from './wood';
 import { ERA_THRESHOLDS, Traffic } from './ambient';
 import { Ambient, Ufo } from './wildlife';
@@ -85,8 +85,8 @@ export class Board3D {
     this.ufo?.update(time, dt, this.target);
     if (this.waterMat.normalMap) this.waterMat.normalMap.offset.set(time * 0.03, time * 0.018);
     this.waterLife?.update(time);
-    // 相接邊界的光慢慢呼吸
-    this.glowMat.opacity = 0.6 + 0.2 * Math.sin(time * 2.5);
+    // 同類型區域的微光慢慢呼吸
+    this.shimmerMat.opacity = 0.1 + 0.1 * (0.5 + 0.5 * Math.sin(time * 2.6));
   }
 
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
@@ -412,6 +412,7 @@ export class Board3D {
         this.disposeGroup(this.ghost);
         this.ghost = null;
       }
+      this.markers.children.forEach((m) => (m as THREE.Mesh).geometry.dispose());
       this.markers.clear();
       this.ghostId = '';
       if (pv) {
@@ -433,55 +434,29 @@ export class Board3D {
 
   private ghostRingGeo = new THREE.RingGeometry(0.86, 1.02, 6, 1, Math.PI / 6).rotateX(-Math.PI / 2);
   private ghostRingMat = new THREE.MeshBasicMaterial({ color: '#fff8e8', transparent: true, opacity: 0.95, depthWrite: false });
-  // 相接邊界的光帶：沿著邊長、中間最亮往兩側淡出
-  private glowGeo = new THREE.PlaneGeometry(0.86, 0.07).rotateX(-Math.PI / 2);
-  private glowMat = new THREE.MeshBasicMaterial({
-    color: '#ffffff',
-    map: (() => {
-      const c = document.createElement('canvas');
-      c.width = 64;
-      c.height = 16;
-      const g = c.getContext('2d')!;
-      const grad = g.createLinearGradient(0, 0, 0, 16);
-      grad.addColorStop(0, 'rgba(255,255,255,0)');
-      grad.addColorStop(0.5, 'rgba(255,255,255,1)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 64, 16);
-      g.globalCompositeOperation = 'destination-in';
-      const end = g.createLinearGradient(0, 0, 64, 0);
-      end.addColorStop(0, 'rgba(0,0,0,0)');
-      end.addColorStop(0.15, 'rgba(0,0,0,1)');
-      end.addColorStop(0.85, 'rgba(0,0,0,1)');
-      end.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = end;
-      g.fillRect(0, 0, 64, 16);
-      return new THREE.CanvasTexture(c);
-    })(),
+  // 同類型相接時，鄰居那一整塊同地形的區域微微閃爍
+  private shimmerMat = new THREE.MeshBasicMaterial({
+    color: '#fff4d6',
     transparent: true,
+    opacity: 0.15,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
     fog: false,
   });
 
   private buildMarkers(state: GameState, hex: Hex, edges: Terrain[]) {
-    const c = hexToPixel(hex, 1);
     for (let d = 0; d < 6; d++) {
       const nb = state.board[key(neighbor(hex, d))];
       if (!nb) continue;
-      // 只標出同類型地形相接的邊：讓那段邊界發亮
-      if (nb.edges[opposite(d)] !== edges[d]) continue;
-      const a = corner(d, 1);
-      const b = corner(d + 1, 1);
-      // 細細一條柔和的白線，貼在鄰居那側的邊緣上
-      const glow = new THREE.Mesh(this.glowGeo, this.glowMat);
-      glow.position.set(
-        c.x + ((a.x + b.x) / 2) * 1.04,
-        BASE_TOP + this.theme.heights[nb.edges[opposite(d)]] + 0.012,
-        c.y + ((a.y + b.y) / 2) * 1.04,
-      );
-      glow.rotation.y = -Math.atan2(b.y - a.y, b.x - a.x);
-      glow.renderOrder = 2;
-      this.markers.add(glow);
+      // 只標出同類型地形相接的：鄰居那塊同地形的區域整片微微閃爍
+      const edge = opposite(d);
+      if (nb.edges[edge] !== edges[d]) continue;
+      const k = key(neighbor(hex, d));
+      const region = new THREE.Mesh(regionTopGeometry(this.theme, nb.edges, edge), this.shimmerMat);
+      const p = hexToPixel(parseKey(k), 1);
+      region.position.set(p.x, 0, p.y);
+      region.renderOrder = 2;
+      this.markers.add(region);
     }
   }
 }

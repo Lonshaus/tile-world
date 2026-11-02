@@ -191,6 +191,26 @@ function addDecor(b: Builder, p: DecorPiece, ax: number, ay: number, az: number)
   g.dispose();
 }
 
+/**
+ * 某條邊所在、同一種地形連成一片的那塊地形板頂面（平的多邊形），
+ * 給「同類型相接」時整塊微微閃爍用。座標是地塊本身的區域座標。
+ */
+export function regionTopGeometry(theme: Theme, edges: readonly Terrain[], edge: number): THREE.BufferGeometry {
+  const seg = segments(edges).find(([d, k]) => ((edge - d + 6) % 6) < k)!;
+  const [d, k, terrain] = seg;
+  const { poly, m } = inlayPolygon(d, k);
+  const y = BASE_TOP + theme.heights[terrain] + 0.012;
+  const pos: number[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    pos.push(m[0], y, m[1], q[0], y, q[1], p[0], y, p[1]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return g;
+}
+
 export interface TileGeometry {
   solid: THREE.BufferGeometry;
   water: THREE.BufferGeometry | null;
