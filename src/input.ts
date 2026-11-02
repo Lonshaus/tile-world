@@ -110,10 +110,16 @@ export function attachInput(el: HTMLElement, h: InputHandlers): () => void {
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
   el.addEventListener('wheel', wheel, { passive: false });
+  // iOS Safari 會把連點當成雙擊縮放之類的手勢，把觸控事件吃掉；擋掉預設行為，點擊才會穩定送進來
+  const noGesture = (e: TouchEvent) => e.preventDefault();
+  el.addEventListener('touchstart', noGesture, { passive: false });
+  el.addEventListener('touchend', noGesture, { passive: false });
   const noMenu = (e: Event) => e.preventDefault();
   el.addEventListener('contextmenu', noMenu);
   return () => {
     el.removeEventListener('contextmenu', noMenu);
+    el.removeEventListener('touchstart', noGesture);
+    el.removeEventListener('touchend', noGesture);
     el.removeEventListener('pointerdown', down);
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);

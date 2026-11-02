@@ -37,7 +37,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         try {
-          const res = await fetch(req);
+          // 跳過瀏覽器的 HTTP 快取（GitHub Pages 會讓首頁快取 10 分鐘），每次都跟伺服器確認是不是新版
+          const res = await fetch(req.url, { cache: 'no-cache' });
           const cache = await caches.open(CACHE);
           cache.put('./', res.clone());
           return res;
