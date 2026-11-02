@@ -451,7 +451,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     } else if (preview && card) {
       const ev = evaluate(state, preview, rotateEdges(card.edges, rot));
       hintEl.textContent = t('hint.adjust');
-      previewInfo.textContent = `${t('preview.points', { n: ev.points })} · ${t('preview.matches', { m: ev.matches, n: ev.neighbors })}`;
+      previewInfo.textContent = t('preview.points', { n: ev.points });
     } else {
       hintEl.textContent = t('hint.pickCard');
     }
@@ -511,6 +511,22 @@ function startGame(theme: Theme, existing: GameState | null) {
         { class: 'panel' },
         h('h2', { class: 'panel-title' }, t('pause.title')),
         h('button', { class: 'btn primary', onclick: () => overlay.remove() }, t('pause.resume')),
+        // 遊戲中也能直接開關音樂、音效
+        h(
+          'div',
+          { class: 'row' },
+          ...(['music', 'sfx'] as const).map((k) => {
+            const label = () => `${t(k === 'music' ? 'settings.music' : 'settings.sfx')}：${settings[k] ? t('settings.on') : t('settings.off')}`;
+            const btn = h('button', { class: 'btn' }, label());
+            btn.onclick = () => {
+              settings = { ...settings, [k]: !settings[k] };
+              save.saveSettings(settings);
+              audio.setEnabled(settings.music, settings.sfx);
+              btn.textContent = label();
+            };
+            return btn;
+          }),
+        ),
         h(
           'button',
           {

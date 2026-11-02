@@ -24,7 +24,6 @@ export const zhTW = {
   'action.cancel': '取消',
   'action.recenter': '回到中心',
   'preview.points': '+{n} 分',
-  'preview.matches': '吻合 {m}/{n} 邊',
   'toast.perfect': '完美吻合！+{n}',
   'toast.station': '抵達第 {n} 站',
   'toast.vehicle.balloons': '天空飄來了熱氣球',

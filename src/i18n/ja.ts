@@ -25,7 +25,6 @@ export const ja: Dict = {
   'action.cancel': 'やめる',
   'action.recenter': '中心に戻る',
   'preview.points': '+{n} 点',
-  'preview.matches': '{m}/{n} 辺が一致',
   'toast.perfect': 'パーフェクト！+{n}',
   'toast.station': '{n} 駅目に到着',
   'toast.vehicle.balloons': '空に熱気球が現れた',

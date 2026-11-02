@@ -25,7 +25,6 @@ export const en: Dict = {
   'action.cancel': 'Cancel',
   'action.recenter': 'Recenter',
   'preview.points': '+{n} pts',
-  'preview.matches': '{m}/{n} edges match',
   'toast.perfect': 'Perfect fit! +{n}',
   'toast.station': 'Arrived at stop {n}',
   'toast.vehicle.balloons': 'Hot-air balloons drift into the sky',

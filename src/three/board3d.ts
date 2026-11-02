@@ -75,7 +75,7 @@ export class Board3D {
 
   /** 有雲或鳥在動，需要每個畫面都重畫 */
   get animated(): boolean {
-    return this.animateWater || !!this.ambient?.active;
+    return this.animateWater || !!this.ambient?.active || this.markers.children.length > 0;
   }
 
   /** 推進雲和鳥的動畫（秒） */
@@ -85,6 +85,9 @@ export class Board3D {
     this.ufo?.update(time, dt, this.target);
     if (this.waterMat.normalMap) this.waterMat.normalMap.offset.set(time * 0.03, time * 0.018);
     this.waterLife?.update(time);
+    // 相接邊界的光慢慢呼吸
+    this.glowMat.opacity = 0.7 + 0.3 * Math.sin(time * 3.5);
+    this.curtainMat.opacity = 0.45 + 0.25 * Math.sin(time * 3.5);
   }
 
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
@@ -431,21 +434,92 @@ export class Board3D {
 
   private ghostRingGeo = new THREE.RingGeometry(0.86, 1.02, 6, 1, Math.PI / 6).rotateX(-Math.PI / 2);
   private ghostRingMat = new THREE.MeshBasicMaterial({ color: '#fff8e8', transparent: true, opacity: 0.95, depthWrite: false });
-  private markerGeo = new THREE.SphereGeometry(0.085, 12, 8);
-  private okMat = new THREE.MeshBasicMaterial({ color: '#4caf7a' });
-  private badMat = new THREE.MeshBasicMaterial({ color: '#d9604c' });
+  // 相接邊界的光帶：沿著邊長、中間最亮往兩側淡出
+  private glowGeo = new THREE.PlaneGeometry(1, 0.2).rotateX(-Math.PI / 2);
+  private curtainGeo = new THREE.PlaneGeometry(0.9, 1).translate(0, 0.5, 0);
+  private curtainMat = new THREE.MeshBasicMaterial({
+    color: '#fff1b8',
+    map: (() => {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 32;
+      const g = c.getContext('2d')!;
+      const grad = g.createLinearGradient(0, 32, 0, 0);
+      grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+      grad.addColorStop(1, 'rgba(255,255,255,0.15)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 32);
+      g.globalCompositeOperation = 'destination-in';
+      const end = g.createLinearGradient(0, 0, 64, 0);
+      end.addColorStop(0, 'rgba(0,0,0,0)');
+      end.addColorStop(0.2, 'rgba(0,0,0,1)');
+      end.addColorStop(0.8, 'rgba(0,0,0,1)');
+      end.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = end;
+      g.fillRect(0, 0, 64, 32);
+      return new THREE.CanvasTexture(c);
+    })(),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  private glowMat = new THREE.MeshBasicMaterial({
+    color: '#fff1b8',
+    map: (() => {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 32;
+      const g = c.getContext('2d')!;
+      const grad = g.createLinearGradient(0, 0, 0, 32);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,1)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 32);
+      // 兩端也淡出，不會有硬邊
+      g.globalCompositeOperation = 'destination-in';
+      const end = g.createLinearGradient(0, 0, 64, 0);
+      end.addColorStop(0, 'rgba(0,0,0,0)');
+      end.addColorStop(0.12, 'rgba(0,0,0,1)');
+      end.addColorStop(0.88, 'rgba(0,0,0,1)');
+      end.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = end;
+      g.fillRect(0, 0, 64, 32);
+      return new THREE.CanvasTexture(c);
+    })(),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
 
   private buildMarkers(state: GameState, hex: Hex, edges: Terrain[]) {
     const c = hexToPixel(hex, 1);
     for (let d = 0; d < 6; d++) {
       const nb = state.board[key(neighbor(hex, d))];
       if (!nb) continue;
-      const ok = nb.edges[opposite(d)] === edges[d];
+      // 只標出同類型地形相接的邊：讓那段邊界發亮
+      if (nb.edges[opposite(d)] !== edges[d]) continue;
       const a = corner(d, 1);
       const b = corner(d + 1, 1);
-      const mk = new THREE.Mesh(this.markerGeo, ok ? this.okMat : this.badMat);
-      mk.position.set(c.x + (a.x + b.x) / 2 * 0.95, BASE_TOP + GHOST_LIFT + 0.12, c.y + (a.y + b.y) / 2 * 0.95);
-      this.markers.add(mk);
+      const mx = c.x + (a.x + b.x) / 2;
+      const mz = c.y + (a.y + b.y) / 2;
+      const ang = -Math.atan2(b.y - a.y, b.x - a.x);
+      const top = BASE_TOP + this.theme.heights[edges[d]];
+      // 鄰居那側的邊緣亮起來（往外偏一點，不被浮著的預覽擋住）
+      const glow = new THREE.Mesh(this.glowGeo, this.glowMat);
+      glow.position.set(mx + ((a.x + b.x) / 2) * 0.08, top + 0.02, mz + ((a.y + b.y) / 2) * 0.08);
+      glow.rotation.y = ang;
+      glow.renderOrder = 2;
+      // 從鄰居的邊往上連到預覽地塊的一道光，看得出這兩條邊接在一起
+      const curtain = new THREE.Mesh(this.curtainGeo, this.curtainMat);
+      curtain.position.set(mx, top, mz);
+      curtain.scale.y = GHOST_LIFT + 0.05;
+      curtain.rotation.y = ang;
+      curtain.renderOrder = 2;
+      this.markers.add(glow, curtain);
     }
   }
 }
