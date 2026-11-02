@@ -448,7 +448,7 @@ function startGame(theme: Theme, existing: GameState | null) {
           dealt.add(c.id);
           const delay = dealIndex++ * DEAL_STAGGER;
           inner.style.visibility = 'hidden';
-          toDeal.push(() => dealFx.play(c.id, btn, front, back, delay, () => refreshUI()));
+          toDeal.push(() => dealFx.play(c.id, btn, front, back, delay, () => vibrate(25), () => refreshUI()));
         } else if (dealFx.isDealing(c.id)) {
           inner.style.visibility = 'hidden';
         }
