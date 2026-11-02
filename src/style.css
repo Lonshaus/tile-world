@@ -298,6 +298,14 @@ button {
   display: flex;
   gap: 18px;
 }
+.actions.floating {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  will-change: transform;
+  visibility: hidden;
+}
 .round {
   width: 52px;
   height: 52px;

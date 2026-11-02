@@ -242,7 +242,7 @@ function startGame(theme: Theme, existing: GameState | null) {
   const handEl = h('div', { class: 'hand' });
   const actionsEl = h(
     'div',
-    { class: 'actions' },
+    { class: 'actions floating', hidden: true },
     h('button', { class: 'round', 'aria-label': t('action.cancel'), onclick: () => cancelPreview() }, '✕'),
     h('button', { class: 'round', 'aria-label': t('action.rotate'), onclick: () => rotate() }, '↻'),
     h('button', { class: 'round confirm', 'aria-label': t('action.confirm'), onclick: () => confirm() }, '✓'),
@@ -260,7 +260,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     { class: 'icon-btn floating-btn', 'aria-label': t('action.recenter'), onclick: () => { board.fitBoard(state); requestRender(); } },
     '⌖',
   );
-  const bottom = h('div', { class: 'bottom' }, hintEl, previewInfo, actionsEl, handEl);
+  const bottom = h('div', { class: 'bottom' }, hintEl, previewInfo, handEl);
   const root = h(
     'div',
     { class: 'screen game', style: `background: linear-gradient(${theme.sky[0]}, ${theme.sky[1]})` },
@@ -268,6 +268,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     top,
     recenter,
     bottom,
+    actionsEl,
   );
   mount(root, () => {
     detach();
@@ -305,7 +306,23 @@ function startGame(theme: Theme, existing: GameState | null) {
       preview: preview && card ? { hex: preview, edges: rotateEdges(card.edges, rot), seed: tileSeed(card), rot, id: `${key(preview)}|${card.id}|${rot}` } : null,
       pop: popT,
     });
+    placeActions();
     if (pop || board.animated) requestRender();
+  }
+
+  /** 取消／旋轉／確定按鈕跟著預覽地塊，擺在它正下方（不超出上方 HUD 與下方手牌） */
+  function placeActions() {
+    const a = board.previewAnchor();
+    if (!a || actionsEl.hidden) return;
+    const r = canvas.getBoundingClientRect();
+    const hgt = actionsEl.offsetHeight || 64;
+    const wid = actionsEl.offsetWidth || 200;
+    const minY = top.getBoundingClientRect().bottom + 4;
+    const maxY = bottom.getBoundingClientRect().top + 8 - hgt;
+    const y = Math.max(minY, Math.min(maxY, r.top + a.y + 8));
+    const x = Math.max(8 + wid / 2, Math.min(window.innerWidth - 8 - wid / 2, r.left + a.x));
+    actionsEl.style.transform = `translate(${Math.round(x - wid / 2)}px, ${Math.round(y)}px)`;
+    actionsEl.style.visibility = 'visible';
   }
   let lastFrame = 0;
 
@@ -457,6 +474,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     }
     previewInfo.hidden = !preview;
     actionsEl.hidden = !preview;
+    if (!preview) actionsEl.style.visibility = 'hidden'; // 下次出現時先定位好再顯示，不會在左上角閃一下
 
     let dealIndex = 0;
     const toDeal: (() => void)[] = [];

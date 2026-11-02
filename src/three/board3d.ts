@@ -309,6 +309,25 @@ export class Board3D {
     return { x: ((v.x + 1) / 2) * this.w, y: ((1 - v.y) / 2) * this.h };
   }
 
+  /** 預覽地塊（含地上的落點外框）在畫面上的水平中心與最下緣，沒有預覽時回傳 null */
+  previewAnchor(): { x: number; y: number } | null {
+    if (!this.ghost) return null;
+    const box = new THREE.Box3().setFromObject(this.ghost);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < 8; i++) {
+      v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(this.camera);
+      const sx = ((v.x + 1) / 2) * this.w;
+      const sy = ((1 - v.y) / 2) * this.h;
+      minX = Math.min(minX, sx);
+      maxX = Math.max(maxX, sx);
+      maxY = Math.max(maxY, sy);
+    }
+    return { x: (minX + maxX) / 2, y: maxY };
+  }
+
   /** 這個螢幕位置有沒有點到浮在半空中的預覽地塊 */
   hitsPreview(sx: number, sy: number): boolean {
     if (!this.ghost) return false;
