@@ -314,9 +314,16 @@ function startGame(theme: Theme, existing: GameState | null) {
   const detach = attachInput(canvas, {
     onTap(x, y) {
       if (viewingOnly || state.over) return;
-      const hex = board.screenToHex(x, y);
       const card = state.hand[selected];
       if (!card) return;
+      // 預覽的地塊浮在半空中，點在它身上就算點同一格（旋轉）
+      if (preview && board.hitsPreview(x, y)) {
+        rot = (rot + 1) % 6;
+        vibrate(8);
+        refreshUI();
+        return;
+      }
+      const hex = board.screenToHex(x, y);
       if (hex && canPlace(state, hex)) {
         if (preview && key(preview) === key(hex)) {
           rot = (rot + 1) % 6;

@@ -305,6 +305,14 @@ export class Board3D {
     return { x: ((v.x + 1) / 2) * this.w, y: ((1 - v.y) / 2) * this.h };
   }
 
+  /** 這個螢幕位置有沒有點到浮在半空中的預覽地塊 */
+  hitsPreview(sx: number, sy: number): boolean {
+    if (!this.ghost) return false;
+    const ndc = new THREE.Vector2((sx / this.w) * 2 - 1, -(sy / this.h) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    return this.raycaster.intersectObject(this.ghost, true).length > 0;
+  }
+
   screenToHex(sx: number, sy: number): Hex | null {
     const ndc = new THREE.Vector2((sx / this.w) * 2 - 1, -(sy / this.h) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);

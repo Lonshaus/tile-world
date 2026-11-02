@@ -49,27 +49,82 @@ interface Agent {
 
 // ───────────── 鳥 ─────────────
 
-/** 鳥：身體 + 兩片翅膀（根部在原點，可以拍動），朝 +z */
-function birdModel(color: string, size: number, wingShape: 'pointed' | 'broad' = 'pointed') {
-  const m = mat(color, { side: THREE.DoubleSide });
-  const span = wingShape === 'broad' ? 0.2 : 0.16;
-  const chord = wingShape === 'broad' ? 0.07 : 0.045;
-  const wing = new THREE.BufferGeometry();
-  wing.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -chord, 0, 0, chord, span, 0, -chord * 0.4], 3));
-  wing.computeVertexNormals();
-  const obj = new THREE.Group();
-  obj.add(new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.14, 4).rotateX(Math.PI / 2), m));
-  const l = new THREE.Mesh(wing, m);
-  const r = new THREE.Mesh(wing, m);
-  r.scale.x = -1;
-  obj.add(l, r);
-  obj.scale.setScalar(size);
-  return { obj, l, r };
+interface BirdSpec {
+  body: string;
+  belly: string;
+  wing: string;
+  tip: string;
+  head: string;
+  beak: string;
+  /** 翅膀長寬：寬翅（老鷹、麻雀）或尖翅（雁、燕子） */
+  span: number;
+  chord: number;
+  /** 燕子的剪刀尾 */
+  forkedTail?: boolean;
 }
 
-function flap(b: { l: THREE.Mesh; r: THREE.Mesh }, angle: number) {
+const BIRDS: Record<'goose' | 'sparrow' | 'eagle' | 'swallow', BirdSpec> = {
+  goose: { body: '#ece8dc', belly: '#f6f3ea', wing: '#c9c4b8', tip: '#3a3632', head: '#ece8dc', beak: '#e8a23a', span: 0.1, chord: 0.05 },
+  sparrow: { body: '#8a6a4a', belly: '#d8c8a8', wing: '#6f5238', tip: '#4a3624', head: '#7a5a3c', beak: '#3a3028', span: 0.075, chord: 0.055 },
+  eagle: { body: '#5a4230', belly: '#6a4e38', wing: '#4f3a2a', tip: '#2f241a', head: '#f2efe6', beak: '#e8b83a', span: 0.12, chord: 0.065 },
+  swallow: { body: '#2a3a5c', belly: '#f2efe6', wing: '#22304c', tip: '#1a2338', head: '#2a3a5c', beak: '#2a2a2a', span: 0.1, chord: 0.035, forkedTail: true },
+};
+
+function tri(points: number[]): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** 一邊翅膀：內段（連著身體）+ 外段（羽尖），外段是內段的子物件，拍動時會跟著彎 */
+function wingParts(spec: BirdSpec) {
+  const c = spec.chord;
+  const s = spec.span;
+  const inner = new THREE.Group();
+  inner.add(new THREE.Mesh(tri([0, 0, c, s, 0, c * 0.8, s, 0, -c * 0.7, 0, 0, c, s, 0, -c * 0.7, 0, 0, -c * 0.9]), mat(spec.wing, { side: THREE.DoubleSide })));
+  const outer = new THREE.Group();
+  outer.position.x = s;
+  // 外段往後掠、末端收尖
+  outer.add(new THREE.Mesh(tri([0, 0, c * 0.8, s * 0.9, 0, -c * 0.1, 0, 0, -c * 0.7, s * 0.9, 0, -c * 0.1, s * 0.75, 0, -c * 0.6, 0, 0, -c * 0.7]), mat(spec.tip, { side: THREE.DoubleSide })));
+  inner.add(outer);
+  return { inner, outer };
+}
+
+/** 鳥：圓胖的身體、頭、嘴、尾羽，翅膀分內外兩段（朝 +z） */
+function birdModel(spec: BirdSpec, size: number) {
+  const obj = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat(spec.body));
+  body.scale.set(0.032, 0.03, 0.075);
+  const belly = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat(spec.belly));
+  belly.scale.set(0.026, 0.022, 0.06);
+  belly.position.set(0, -0.01, 0.005);
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.024, 1), mat(spec.head));
+  head.position.set(0, 0.018, 0.07);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 5).rotateX(Math.PI / 2), mat(spec.beak));
+  beak.position.set(0, 0.014, 0.1);
+  const tailPts = spec.forkedTail
+    ? [0, 0, -0.05, 0.03, 0, -0.14, 0.008, 0, -0.07, 0, 0, -0.05, -0.008, 0, -0.07, -0.03, 0, -0.14]
+    : [0, 0, -0.05, 0.03, 0, -0.11, -0.03, 0, -0.11];
+  const tail = new THREE.Mesh(tri(tailPts), mat(spec.wing, { side: THREE.DoubleSide }));
+  obj.add(body, belly, head, beak, tail);
+  const l = wingParts(spec);
+  const r = wingParts(spec);
+  l.inner.position.set(0.02, 0.008, 0.01);
+  r.inner.position.set(-0.02, 0.008, 0.01);
+  r.inner.scale.x = -1;
+  obj.add(l.inner, r.inner);
+  obj.scale.setScalar(size);
+  return { obj, l: l.inner, r: r.inner, lo: l.outer, ro: r.outer };
+}
+
+/** 拍翅：內段轉 angle，外段再多彎一點（往下拍時羽尖落後，往上收時折起來） */
+function flap(b: ReturnType<typeof birdModel>, angle: number) {
+  const outer = angle * 0.6 + (angle > 0 ? 0.15 : -0.1);
   b.l.rotation.z = angle;
   b.r.rotation.z = -angle;
+  b.lo.rotation.z = outer;
+  b.ro.rotation.z = outer;
 }
 
 /** 雁群：排成 V 字直直飛越地圖，飛出去換個方向再來 */
@@ -80,7 +135,7 @@ class GeeseV implements Agent {
   constructor(private rand: R, parent: THREE.Group) {
     const n = 5 + Math.floor(rand() * 3);
     for (let i = 0; i < n; i++) {
-      const b = birdModel('#e9e4d8', 1.1);
+      const b = birdModel(BIRDS.goose, 1.2);
       const side = i % 2 ? 1 : -1;
       const rank = Math.ceil(i / 2);
       b.obj.position.set(side * rank * 0.16, 0, -rank * 0.16);
@@ -112,7 +167,7 @@ class Sparrows implements Agent {
     this.path = wanderer(rand, 5, 1.6);
     const n = 6 + Math.floor(rand() * 4);
     for (let i = 0; i < n; i++) {
-      const b = birdModel(rand() < 0.5 ? '#8a6a4a' : '#a07d58', 0.55, 'broad');
+      const b = birdModel(BIRDS.sparrow, 0.6 + rand() * 0.1);
       this.birds.push({ b, ox: rand() * 6, oz: rand() * 6, f: 1.5 + rand(), prev: new THREE.Vector3() });
       parent.add(b.obj);
     }
@@ -136,7 +191,7 @@ class Sparrows implements Agent {
 
 /** 老鷹：張開翅膀在高空慢慢盤旋，偶爾拍幾下 */
 class Eagle implements Agent {
-  private b = birdModel('#5a4632', 1.9, 'broad');
+  private b = birdModel(BIRDS.eagle, 1.9);
   private path: (t: number) => { x: number; z: number };
   private prev = new THREE.Vector3();
   constructor(rand: R, parent: THREE.Group) {
@@ -155,7 +210,7 @@ class Eagle implements Agent {
 
 /** 燕子：貼著地面快速俯衝、拉高，拍翅和滑翔交替 */
 class Swallow implements Agent {
-  private b = birdModel('#2f3f5f', 0.75);
+  private b = birdModel(BIRDS.swallow, 0.8);
   private path: (t: number) => { x: number; z: number };
   private prev = new THREE.Vector3();
   constructor(private rand: R, parent: THREE.Group) {
