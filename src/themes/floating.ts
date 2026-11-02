@@ -42,7 +42,7 @@ export const floating: Theme = {
   heights: [0.06, 0.045, 0.02, 0.055, 0.08],
   base: '#a77b4f',
   glyphs: ['tree', 'grass', 'wave', 'house', 'mountain'],
-  ambient: { clouds: true, birds: true },
+  ambient: { clouds: true, birds: true, ufo: true, eras: ['balloons', 'propPlane', 'jet'] },
   decor(terrain, rand) {
     switch (terrain) {
       case Terrain.Green: {

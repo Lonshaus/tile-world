@@ -326,7 +326,7 @@ button {
   width: 100%;
   padding-bottom: 4px;
 }
-/* 卡牌：撲克牌比例的木片 */
+/* 卡牌：撲克牌比例，沒有邊框 */
 .card {
   flex: 0 1 112px;
   aspect-ratio: 5 / 7;
@@ -335,31 +335,41 @@ button {
   background: transparent;
   padding: 0;
   display: block;
-  box-shadow:
-    0 1px 0 #8a5a2b,
-    0 2px 0 #6f4621,
-    0 6px 10px rgba(50, 28, 10, 0.35);
+  box-shadow: 0 4px 10px rgba(50, 28, 10, 0.3);
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 .card:active {
   transform: scale(0.97);
 }
 .card.selected {
-  transform: translateY(-12px);
-  box-shadow:
-    0 1px 0 #8a5a2b,
-    0 2px 0 #6f4621,
-    0 0 0 3px rgba(255, 236, 190, 0.95),
-    0 14px 16px rgba(50, 28, 10, 0.35);
+  transform: translateY(-14px);
+  box-shadow: 0 14px 18px rgba(50, 28, 10, 0.35);
 }
 .card.selected:active {
-  transform: translateY(-12px) scale(0.97);
+  transform: translateY(-14px) scale(0.97);
 }
 .card-canvas {
   width: 100%;
   height: 100%;
   display: block;
   border-radius: 9px;
+}
+/* 發牌：從右邊滑進來並翻成正面 */
+.card-canvas.deal {
+  animation: deal 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+}
+@keyframes deal {
+  0% {
+    opacity: 0;
+    transform: translate(140%, 30%) rotate(18deg) rotateY(90deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-4%, -4%) rotate(-2deg) rotateY(0deg);
+  }
+  100% {
+    transform: none;
+  }
 }
 
 /* ── 對話框 ── */

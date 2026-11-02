@@ -309,46 +309,35 @@ export function drawPlayingCard(canvas: HTMLCanvasElement, art: CanvasImageSourc
   const ctx = canvas.getContext('2d')!;
   const { width: w, height: h } = canvas;
   const u = w / 100; // 以卡寬 100 為單位排版
+  const radius = 8 * u;
   ctx.clearRect(0, 0, w, h);
-  drawWoodPanel(ctx, w, h, seed, 8 * u);
-
-  // 內框刻線
-  engrave(ctx, w, () => {
-    ctx.beginPath();
-    roundRect(ctx, 4 * u, 4 * u, w - 8 * u, h - 8 * u, 5 * u);
-  });
-
-  // 插畫窗
-  const ax = 7 * u;
-  const ay = 7 * u;
-  const aw = w - 14 * u;
-  const ah = h * 0.5;
   ctx.save();
-  roundRect(ctx, ax, ay, aw, ah, 3 * u);
+  roundRect(ctx, 0, 0, w, h, radius);
   ctx.clip();
-  const g = ctx.createLinearGradient(0, ay, 0, ay + ah);
+
+  // 下半部：木紋底
+  const wood = ctx.createLinearGradient(0, 0, w, h);
+  wood.addColorStop(0, '#c99c68');
+  wood.addColorStop(1, '#a87a4c');
+  ctx.fillStyle = wood;
+  ctx.fillRect(0, 0, w, h);
+  grain(ctx, 0, 0, w, h, seed);
+
+  // 上半部：插圖直接貼齊卡牌上緣與左右
+  const ah = h * 0.52;
+  const g = ctx.createLinearGradient(0, 0, 0, ah);
   g.addColorStop(0, sky[0]);
   g.addColorStop(1, sky[1]);
   ctx.fillStyle = g;
-  ctx.fillRect(ax, ay, aw, ah);
-  ctx.drawImage(art, ax, ay, aw, ah);
-  // 內陰影：窗框凹進去
-  ctx.shadowColor = 'rgba(25,12,0,0.7)';
-  ctx.shadowBlur = 3 * u;
-  ctx.shadowOffsetX = 0.8 * u;
-  ctx.shadowOffsetY = 1.2 * u;
-  ctx.lineWidth = 3 * u;
-  ctx.strokeStyle = 'rgba(25,12,0,0.6)';
-  roundRect(ctx, ax - 1.5 * u, ay - 1.5 * u, aw + 3 * u, ah + 3 * u, 4 * u);
-  ctx.stroke();
-  ctx.restore();
+  ctx.fillRect(0, 0, w, ah);
+  ctx.drawImage(art, 0, 0, w, ah);
 
   // 卡名
-  let y = ay + ah + 11 * u;
+  let y = ah + 11 * u;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const font = (size: number, weight = 700) => `${weight} ${size * u}px system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Hiragino Sans", sans-serif`;
-  const carvedText = (s: string, x: number, yy: number, size: number, weight = 700, maxW = w - 16 * u) => {
+  const carvedText = (s: string, x: number, yy: number, size: number, weight = 700, maxW = w - 12 * u) => {
     ctx.font = font(size, weight);
     ctx.fillStyle = 'rgba(255,238,205,0.55)';
     ctx.fillText(s, x + 0.35 * u, yy + 0.45 * u, maxW);
@@ -360,39 +349,19 @@ export function drawPlayingCard(canvas: HTMLCanvasElement, art: CanvasImageSourc
   // 卡片種類
   y += 9 * u;
   carvedText(text.type, w / 2, y, 6, 600);
-  engrave(ctx, w, () => {
-    ctx.beginPath();
-    ctx.moveTo(16 * u, y + 5 * u);
-    ctx.lineTo(w - 16 * u, y + 5 * u);
-  });
 
   // 說明：地形組成
-  y += 13 * u;
-  ctx.textAlign = 'left';
+  y += 12 * u;
   for (const row of text.rows) {
     ctx.fillStyle = row.color;
-    ctx.strokeStyle = 'rgba(40,20,5,0.6)';
-    ctx.lineWidth = 0.6 * u;
     ctx.beginPath();
-    ctx.arc(15 * u, y, 3 * u, 0, Math.PI * 2);
+    ctx.arc(12 * u, y, 3 * u, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
     ctx.textAlign = 'left';
-    carvedText(row.label, 22 * u, y, 7.5, 600, 50 * u);
+    carvedText(row.label, 19 * u, y, 7.5, 600, 55 * u);
     ctx.textAlign = 'right';
-    carvedText(row.value, w - 12 * u, y, 7.5, 700, 22 * u);
+    carvedText(row.value, w - 9 * u, y, 7.5, 700, 22 * u);
     y += 10.5 * u;
   }
-
-  // 亮光漆反光
-  const gloss = ctx.createLinearGradient(0, 0, 0, h);
-  gloss.addColorStop(0, 'rgba(255,248,230,0.22)');
-  gloss.addColorStop(0.4, 'rgba(255,248,230,0.03)');
-  gloss.addColorStop(1, 'rgba(0,0,0,0.1)');
-  ctx.save();
-  roundRect(ctx, 0, 0, w, h, 8 * u);
-  ctx.clip();
-  ctx.fillStyle = gloss;
-  ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }

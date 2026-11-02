@@ -6,6 +6,7 @@ import type { Theme } from '../themes/types';
 import { BASE_TOP, buildTileGeometry } from './geom';
 import { makeGrainTexture } from './wood';
 import { Ambient, ERA_THRESHOLDS, Traffic, Ufo } from './ambient';
+import { WaterLife, makeRippleNormalMap } from './water';
 import type { Quality } from '../save';
 
 const QUALITY: Record<Quality, { ratio: number; shadow: number; aa: boolean }> = {
@@ -56,6 +57,8 @@ export class Board3D {
   private ambient: Ambient | null = null;
   private traffic: Traffic | null = null;
   private ufo: Ufo | null = null;
+  private animateWater = false;
+  private waterLife: WaterLife | null = null;
 
   /** 依聚落邊數算出目前的時代（0 起算） */
   static eraOf(state: GameState): number {
@@ -64,9 +67,14 @@ export class Board3D {
     return ERA_THRESHOLDS.filter((n) => edges >= n).length;
   }
 
+  /** 這個主題在某個時代會出現的交通工具 */
+  vehicleOfEra(era: number): string | undefined {
+    return this.theme.ambient?.eras[era - 1];
+  }
+
   /** 有雲或鳥在動，需要每個畫面都重畫 */
   get animated(): boolean {
-    return !!this.ambient?.active;
+    return this.animateWater || !!this.ambient?.active;
   }
 
   /** 推進雲和鳥的動畫（秒） */
@@ -74,6 +82,8 @@ export class Board3D {
     this.ambient?.update(time, dt, this.target);
     this.traffic?.update(time, dt, this.target);
     this.ufo?.update(time, dt, this.target);
+    if (this.waterMat.normalMap) this.waterMat.normalMap.offset.set(time * 0.03, time * 0.018);
+    this.waterLife?.update(time);
   }
 
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
@@ -103,7 +113,16 @@ export class Board3D {
 
     const grain = makeGrainTexture();
     this.solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: grain, roughness: 0.88, metalness: 0, flatShading: true });
-    this.waterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0, flatShading: true });
+    this.waterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0, flatShading: true });
+    // 會流動的波光（省電模式不動）
+    this.animateWater = quality !== 'low';
+    if (this.animateWater) {
+      this.waterMat.flatShading = false;
+      this.waterMat.normalMap = makeRippleNormalMap();
+      this.waterMat.normalScale.set(0.45, 0.45);
+      this.waterLife = new WaterLife(theme.heights[Terrain.Water], !!theme.ambient?.birds);
+      this.scene.add(this.waterLife.group);
+    }
     this.ghostSolid = this.solidMat.clone();
     this.ghostSolid.transparent = true;
     this.ghostSolid.opacity = 0.9;
@@ -125,9 +144,12 @@ export class Board3D {
     if (theme.ambient && quality !== 'low') {
       this.ambient = new Ambient(theme.ambient, q.shadow > 0);
       this.scene.add(this.ambient.group);
-      this.traffic = new Traffic();
-      this.ufo = new Ufo();
-      this.scene.add(this.traffic.group, this.ufo.group);
+      this.traffic = new Traffic(theme.ambient.eras);
+      this.scene.add(this.traffic.group);
+      if (theme.ambient.ufo) {
+        this.ufo = new Ufo();
+        this.scene.add(this.ufo.group);
+      }
     }
 
     this.resize();
@@ -321,6 +343,7 @@ export class Board3D {
       const g = this.makeTile(tile.edges, tile.seed, false);
       const p = hexToPixel(parseKey(k), 1);
       g.position.set(p.x, 0, p.y);
+      this.waterLife?.addTile(p.x, p.y, tile.edges, tile.seed);
       this.scene.add(g);
       this.tiles.set(k, g);
     }

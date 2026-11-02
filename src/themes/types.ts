@@ -20,6 +20,8 @@ export type Glyph =
   | 'station'
   | 'planet';
 
+export type Vehicle = 'balloons' | 'propPlane' | 'jet' | 'submarine' | 'spaceship';
+
 /** 穩定亂數（0..1） */
 export type Rand = () => number;
 
@@ -63,8 +65,16 @@ export interface Theme {
   base: string;
   /** 卡牌上五種地形的刻線圖案 */
   glyphs: [Glyph, Glyph, Glyph, Glyph, Glyph];
-  /** 天空中飄過的雲和飛過的鳥 */
-  ambient?: { clouds: boolean; birds: boolean };
+  /** 場景裡會動的點綴：雲、鳥、魚群、衛星、飛碟，以及隨世界發展依序出現的交通工具 */
+  ambient?: {
+    clouds?: boolean;
+    birds?: boolean;
+    fish?: boolean;
+    satellites?: boolean;
+    ufo?: boolean;
+    /** 第 1、2、3 個時代各出現什麼 */
+    eras: Vehicle[];
+  };
   /** 每個扇形的 3D 裝飾 */
   decor(terrain: Terrain, rand: Rand): DecorPiece[];
 }

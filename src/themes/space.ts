@@ -47,6 +47,7 @@ export const space: Theme = {
   heights: [0.05, 0.04, 0.015, 0.05, 0.07],
   base: '#a77b4f',
   glyphs: ['swirl', 'rock', 'stars', 'station', 'planet'],
+  ambient: { satellites: true, ufo: true, eras: ['spaceship'] },
   decor(terrain, rand) {
     switch (terrain) {
       case Terrain.Green:

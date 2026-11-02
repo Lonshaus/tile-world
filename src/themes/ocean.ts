@@ -50,6 +50,7 @@ export const ocean: Theme = {
   heights: [0.05, 0.03, 0.015, 0.06, 0.07],
   base: '#a77b4f',
   glyphs: ['kelp', 'shell', 'wave', 'coral', 'anchor'],
+  ambient: { fish: true, eras: ['submarine'] },
   decor(terrain, rand) {
     switch (terrain) {
       case Terrain.Green: {

@@ -319,6 +319,8 @@ function startGame(theme: Theme, existing: GameState | null) {
     },
   });
 
+  const dealtCards = new Set<number>();
+
   // 鏡頭轉動時，卡牌插圖跟著換角度（每個畫面最多重畫一次）
   let handRaf = 0;
   function scheduleHandRedraw() {
@@ -363,7 +365,8 @@ function startGame(theme: Theme, existing: GameState | null) {
     vibrate(res.perfect ? 40 : 15);
     const eraBefore = Board3D.eraOf({ ...state, board: Object.fromEntries(Object.entries(state.board).filter(([k]) => k !== key(hex))) });
     const eraAfter = Board3D.eraOf(state);
-    if (theme.ambient && eraAfter > eraBefore) toast(t(`toast.era${eraAfter}` as StringKey));
+    const vehicle = eraAfter > eraBefore ? board.vehicleOfEra(eraAfter) : undefined;
+    if (vehicle && settings.quality !== 'low') toast(t(`toast.vehicle.${vehicle}` as StringKey));
     else if (res.perfect) toast(t('toast.perfect', { n: res.points }));
     else if (res.newStation) toast(t('toast.station', { n: stationOf(state).station }));
     if (state.over) {
@@ -397,11 +400,18 @@ function startGame(theme: Theme, existing: GameState | null) {
     previewInfo.hidden = !preview;
     actionsEl.hidden = !preview;
 
+    let dealIndex = 0;
     handEl.replaceChildren(
       ...state.hand.map((c, i) => {
         const cv = h('canvas', { class: 'card-canvas', width: CARD_W, height: CARD_H });
+        // 第一次出現的牌播放發牌動畫，開局的幾張依序發出
+        if (!dealtCards.has(c.id)) {
+          dealtCards.add(c.id);
+          cv.classList.add('deal');
+          cv.style.animationDelay = `${dealIndex++ * 120}ms`;
+        }
         const edges = rotateEdges(c.edges, i === selected ? rot : 0);
-        const art = board.tileArt(edges, c.id * 7919, CARD_W, Math.round(CARD_H * 0.5));
+        const art = board.tileArt(edges, c.id * 7919, CARD_W, Math.round(CARD_H * 0.52));
         drawPlayingCard(cv, art, theme.sky, cardText(theme, c.edges), c.id * 7919);
         return h(
           'button',

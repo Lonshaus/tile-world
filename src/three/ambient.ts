@@ -1,15 +1,67 @@
 // 天空的點綴：慢慢飄過的雲、成群盤旋的鳥
 import * as THREE from 'three';
 import { seededRand } from '../themes/types';
+import type { Theme, Vehicle } from '../themes/types';
 
 const AREA = 14; // 以鏡頭目標為中心，雲在這個範圍內循環
+
+const pickColor = (rand: () => number) => ['#f0a040', '#e8c040', '#5fb0d8', '#e07060'][Math.floor(rand() * 4)];
+
+/** 鳥：身體 + 兩邊翅膀（翅膀根部在原點，方便拍動） */
+function birdModel(): { obj: THREE.Group; wings: THREE.Mesh[] } {
+  const bodyMat = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.9, flatShading: true, side: THREE.DoubleSide });
+  const wing = new THREE.BufferGeometry();
+  wing.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.04, 0, 0, 0.05, 0.16, 0, 0.0], 3));
+  wing.computeVertexNormals();
+  const obj = new THREE.Group();
+  obj.add(new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.14, 4).rotateX(Math.PI / 2), bodyMat));
+  const l = new THREE.Mesh(wing, bodyMat);
+  const r = new THREE.Mesh(wing, bodyMat);
+  r.scale.x = -1;
+  obj.add(l, r);
+  return { obj, wings: [l, r] };
+}
+
+/** 魚：橢圓身體 + 會擺動的尾巴 */
+function fishModel(color: string) {
+  return (): { obj: THREE.Group; wings: THREE.Mesh[] } => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true, side: THREE.DoubleSide });
+    const obj = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 0), m);
+    body.scale.set(0.7, 1, 1.8);
+    const tailGeo = new THREE.BufferGeometry();
+    tailGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0.045, -0.07, 0, -0.045, -0.07], 3));
+    tailGeo.computeVertexNormals();
+    const tail = new THREE.Mesh(tailGeo, m);
+    tail.position.z = -0.08;
+    obj.add(body, tail);
+    return { obj, wings: [tail] };
+  };
+}
+
+/** 衛星：本體 + 兩片太陽能板 */
+function satelliteModel(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.14), new THREE.MeshStandardMaterial({ color: '#d8b04a', roughness: 0.5, metalness: 0.4, flatShading: true }));
+  const panelMat = new THREE.MeshStandardMaterial({ color: '#3f5f9a', roughness: 0.4, metalness: 0.3, flatShading: true });
+  for (const x of [-0.2, 0.2]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.008, 0.1), panelMat);
+    p.position.x = x;
+    g.add(p);
+  }
+  const dish = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.04, 10, 1, true), new THREE.MeshStandardMaterial({ color: '#eeeeee', side: THREE.DoubleSide }));
+  dish.position.y = 0.08;
+  g.add(body, dish);
+  return g;
+}
 
 export class Ambient {
   readonly group = new THREE.Group();
   private clouds: THREE.Group[] = [];
-  private flocks: { group: THREE.Group; radius: number; speed: number; phase: number; height: number; wings: THREE.Mesh[][] }[] = [];
+  private flocks: { group: THREE.Group; radius: number; speed: number; phase: number; height: number; wings: THREE.Mesh[][]; flapSpeed: number }[] = [];
+  private satellites: { obj: THREE.Group; radius: number; speed: number; phase: number; height: number; tilt: number }[] = [];
 
-  constructor(opts: { clouds: boolean; birds: boolean }, castShadow: boolean) {
+  constructor(opts: NonNullable<Theme['ambient']>, castShadow: boolean) {
     const rand = seededRand(2024);
     if (opts.clouds) {
       const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true, transparent: true, opacity: 0.92 });
@@ -32,37 +84,38 @@ export class Ambient {
       }
     }
     if (opts.birds) {
-      const bodyMat = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.9, flatShading: true, side: THREE.DoubleSide });
-      // 一邊翅膀：三角形，根部在原點
-      const wing = new THREE.BufferGeometry();
-      wing.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.04, 0, 0, 0.05, 0.16, 0, 0.0], 3));
-      wing.computeVertexNormals();
-      const body = new THREE.ConeGeometry(0.025, 0.14, 4).rotateX(Math.PI / 2);
-      for (let f = 0; f < 2; f++) {
-        const group = new THREE.Group();
-        const wings: THREE.Mesh[][] = [];
-        const count = 3 + Math.floor(rand() * 3);
-        for (let b = 0; b < count; b++) {
-          const bird = new THREE.Group();
-          bird.add(new THREE.Mesh(body, bodyMat));
-          const l = new THREE.Mesh(wing, bodyMat);
-          const r = new THREE.Mesh(wing, bodyMat);
-          r.scale.x = -1;
-          bird.add(l, r);
-          bird.scale.setScalar(0.7);
-          bird.position.set(-b * 0.14 + rand() * 0.04, rand() * 0.08, (b % 2 ? 1 : -1) * b * 0.09);
-          bird.userData.flap = rand() * Math.PI * 2;
-          wings.push([l, r]);
-          group.add(bird);
-        }
-        this.flocks.push({ group, radius: 3 + rand() * 3, speed: 0.25 + rand() * 0.15, phase: rand() * Math.PI * 2, height: 1.4 + rand() * 0.8, wings });
-        this.group.add(group);
+      for (let f = 0; f < 2; f++) this.addFlock(rand, birdModel, 1.4 + rand() * 0.8, 0.25 + rand() * 0.15, 9);
+    }
+    if (opts.fish) {
+      for (let f = 0; f < 3; f++) this.addFlock(rand, fishModel(pickColor(rand)), 0.5 + rand() * 0.6, 0.2 + rand() * 0.12, 7);
+    }
+    if (opts.satellites) {
+      for (let i = 0; i < 3; i++) {
+        const obj = satelliteModel();
+        this.satellites.push({ obj, radius: 3 + rand() * 4, speed: 0.12 + rand() * 0.1, phase: rand() * Math.PI * 2, height: 2 + rand() * 1.2, tilt: (rand() - 0.5) * 0.6 });
+        this.group.add(obj);
       }
     }
   }
 
+  private addFlock(rand: () => number, model: () => { obj: THREE.Group; wings: THREE.Mesh[] }, height: number, speed: number, flapSpeed: number) {
+    const group = new THREE.Group();
+    const wings: THREE.Mesh[][] = [];
+    const count = 3 + Math.floor(rand() * 3);
+    for (let b = 0; b < count; b++) {
+      const m = model();
+      m.obj.scale.setScalar(0.7);
+      m.obj.position.set(-b * 0.14 + rand() * 0.04, rand() * 0.08, (b % 2 ? 1 : -1) * b * 0.09);
+      m.obj.userData.flap = rand() * Math.PI * 2;
+      wings.push(m.wings);
+      group.add(m.obj);
+    }
+    this.flocks.push({ group, radius: 3 + rand() * 3, speed, phase: rand() * Math.PI * 2, height, wings, flapSpeed });
+    this.group.add(group);
+  }
+
   get active(): boolean {
-    return this.clouds.length > 0 || this.flocks.length > 0;
+    return this.clouds.length > 0 || this.flocks.length > 0 || this.satellites.length > 0;
   }
 
   update(time: number, dt: number, center: THREE.Vector3) {
@@ -78,11 +131,22 @@ export class Ambient {
       const a = f.phase + time * f.speed;
       f.group.position.set(center.x + Math.cos(a) * f.radius, f.height + Math.sin(time * 0.7 + f.phase) * 0.15, center.z + Math.sin(a) * f.radius);
       f.group.rotation.y = -a; // 朝飛行方向
-      f.group.children.forEach((bird, i) => {
-        const flap = Math.sin(time * 9 + bird.userData.flap) * 0.6;
-        f.wings[i][0].rotation.z = flap;
-        f.wings[i][1].rotation.z = -flap;
+      f.group.children.forEach((member, i) => {
+        const flap = Math.sin(time * f.flapSpeed + member.userData.flap) * 0.6;
+        const [a, b] = f.wings[i];
+        if (b) {
+          a.rotation.z = flap; // 鳥：兩邊翅膀上下拍
+          b.rotation.z = -flap;
+        } else {
+          a.rotation.y = flap * 0.7; // 魚：尾巴左右擺
+        }
       });
+    }
+    for (const sat of this.satellites) {
+      const a = sat.phase + time * sat.speed;
+      sat.obj.position.set(center.x + Math.cos(a) * sat.radius, sat.height + Math.sin(a) * sat.tilt * sat.radius * 0.3, center.z + Math.sin(a) * sat.radius);
+      sat.obj.rotation.y = -a;
+      sat.obj.rotation.x = time * 0.3;
     }
   }
 }
@@ -103,6 +167,44 @@ function balloon(color: string): THREE.Group {
   env.position.y = 0.32;
   const basket = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.07), mat('#8a5a2b'));
   g.add(env, basket);
+  return g;
+}
+
+function submarine(): THREE.Group {
+  const g = new THREE.Group();
+  const yellow = mat('#e8b83a');
+  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.32, 4, 10).rotateZ(Math.PI / 2), yellow);
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.06), yellow);
+  tower.position.set(0.03, 0.1, 0);
+  const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.08, 6), mat('#6a6a6a'));
+  scope.position.set(0.05, 0.17, 0);
+  const prop = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.12, 0.03), mat('#6a6a6a'));
+  prop.position.x = -0.26;
+  prop.name = 'prop';
+  for (const z of [-0.06, 0.06]) {
+    const win = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshStandardMaterial({ color: '#9fd8e8', roughness: 0.2 }));
+    win.position.set(0.08, 0.02, z * 1.4);
+    g.add(win);
+  }
+  g.add(hull, tower, scope, prop);
+  return g;
+}
+
+function spaceship(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.36, 10).rotateZ(Math.PI / 2), mat('#e8eaee'));
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 10).rotateZ(-Math.PI / 2), mat('#c8504a'));
+  nose.position.x = 0.26;
+  const finMat = mat('#c8504a');
+  for (const [y, z] of [[0.07, 0], [-0.04, 0.06], [-0.04, -0.06]]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.01), finMat);
+    fin.position.set(-0.14, y, z);
+    if (z) fin.rotation.x = z > 0 ? -1 : 1;
+    g.add(fin);
+  }
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 8).rotateZ(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffb040', transparent: true, opacity: 0.85 }));
+  flame.position.x = -0.27;
+  g.add(body, nose, flame);
   return g;
 }
 
@@ -156,6 +258,8 @@ export class Traffic {
   private crafts: Craft[] = [];
   era = 0;
 
+  constructor(private eras: Vehicle[]) {}
+
   setEra(era: number, center: THREE.Vector3) {
     const rand = seededRand(1000 + era);
     while (this.era < era) {
@@ -166,13 +270,23 @@ export class Traffic {
         this.crafts.push({ obj, heading, speed, height, bob: rand() * 6 });
         this.group.add(obj);
       };
-      if (this.era === 1) {
-        add(balloon('#e07a5f'), 0.15, 2.2);
-        add(balloon('#f2cc8f'), 0.12, 2.6);
-      } else if (this.era === 2) {
-        add(propPlane(), 1.2, 2.4);
-      } else if (this.era === 3) {
-        add(jet(), 2.2, 3.6);
+      switch (this.eras[this.era - 1]) {
+        case 'balloons':
+          add(balloon('#e07a5f'), 0.15, 2.2);
+          add(balloon('#f2cc8f'), 0.12, 2.6);
+          break;
+        case 'propPlane':
+          add(propPlane(), 1.2, 2.4);
+          break;
+        case 'jet':
+          add(jet(), 2.2, 3.6);
+          break;
+        case 'submarine':
+          add(submarine(), 0.5, 0.9);
+          break;
+        case 'spaceship':
+          add(spaceship(), 1.8, 2.8);
+          break;
       }
     }
   }
