@@ -10,6 +10,8 @@ export interface Settings {
   lang: Lang | null; // null = 依手機語言
   haptics: boolean;
   quality: Quality;
+  music: boolean;
+  sfx: boolean;
 }
 
 function read<T>(k: string): T | null {
@@ -38,7 +40,7 @@ function remove(k: string): void {
 }
 
 export function loadSettings(): Settings {
-  return { lang: null, haptics: true, quality: 'high', ...(read<Partial<Settings>>('settings') ?? {}) };
+  return { lang: null, haptics: true, quality: 'high', music: true, sfx: true, ...(read<Partial<Settings>>('settings') ?? {}) };
 }
 
 export function saveSettings(s: Settings): void {

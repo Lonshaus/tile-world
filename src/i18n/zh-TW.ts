@@ -48,6 +48,8 @@ export const zhTW = {
   'pause.menu': '回主選單（自動存檔）',
   'settings.title': '設定',
   'settings.language': '語言',
+  'settings.music': '音樂',
+  'settings.sfx': '音效',
   'settings.haptics': '震動回饋',
   'settings.on': '開',
   'settings.off': '關',

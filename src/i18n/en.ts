@@ -49,6 +49,8 @@ export const en: Dict = {
   'pause.menu': 'Main menu (auto-saved)',
   'settings.title': 'Settings',
   'settings.language': 'Language',
+  'settings.music': 'Music',
+  'settings.sfx': 'Sound effects',
   'settings.haptics': 'Haptics',
   'settings.on': 'On',
   'settings.off': 'Off',

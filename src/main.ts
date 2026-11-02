@@ -21,10 +21,17 @@ import { CardText, drawCardBack, drawCarvedHex, drawPlayingCard, drawWoodPanel }
 import * as save from './save';
 import { THEMES, Theme } from './themes';
 import { confirmDialog, h, toast } from './dom';
+import { audio } from './audio';
 
 const app = document.getElementById('app')!;
 let settings = save.loadSettings();
 setLang(settings.lang ?? detectLang());
+audio.setEnabled(settings.music, settings.sfx);
+
+// 按鈕類的元素統一出「叩」一聲
+document.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest?.('.btn, .chip, .icon-btn, .theme-card')) audio.tap();
+});
 
 function vibrate(ms: number) {
   if (settings.haptics) navigator.vibrate?.(ms);
@@ -72,6 +79,7 @@ function cardBackImage(): HTMLCanvasElement {
 // ───────────────────────── 主選單 ─────────────────────────
 
 function showMenu() {
+  audio.music('floating');
   const cards = THEMES.map((th) => {
     const best = save.getBest(th.id);
     const existing = save.loadGame(th.id);
@@ -119,6 +127,33 @@ function themeThumb(th: Theme): HTMLCanvasElement {
 // ───────────────────────── 設定 ─────────────────────────
 
 function showSettings() {
+  /** 開／關切換的設定列 */
+  const toggle = (label: StringKey, k: 'music' | 'sfx' | 'haptics') =>
+    h(
+      'div',
+      { class: 'setting' },
+      h('span', {}, t(label)),
+      h(
+        'div',
+        { class: 'chips' },
+        ...[true, false].map((v) =>
+          h(
+            'button',
+            {
+              class: `chip${settings[k] === v ? ' on' : ''}`,
+              onclick: () => {
+                settings = { ...settings, [k]: v };
+                save.saveSettings(settings);
+                audio.setEnabled(settings.music, settings.sfx);
+                if (k === 'haptics' && v) vibrate(20);
+                showSettings();
+              },
+            },
+            v ? t('settings.on') : t('settings.off'),
+          ),
+        ),
+      ),
+    );
   const langButtons = LANGS.map((l) =>
     h(
       'button',
@@ -140,30 +175,9 @@ function showSettings() {
       { class: 'screen settings' },
       h('h1', { class: 'page-title' }, t('settings.title')),
       h('div', { class: 'setting' }, h('span', {}, t('settings.language')), h('div', { class: 'chips' }, ...langButtons)),
-      h(
-        'div',
-        { class: 'setting' },
-        h('span', {}, t('settings.haptics')),
-        h(
-          'div',
-          { class: 'chips' },
-          ...[true, false].map((v) =>
-            h(
-              'button',
-              {
-                class: `chip${settings.haptics === v ? ' on' : ''}`,
-                onclick: () => {
-                  settings = { ...settings, haptics: v };
-                  save.saveSettings(settings);
-                  if (v) vibrate(20);
-                  showSettings();
-                },
-              },
-              v ? t('settings.on') : t('settings.off'),
-            ),
-          ),
-        ),
-      ),
+      toggle('settings.music', 'music'),
+      toggle('settings.sfx', 'sfx'),
+      toggle('settings.haptics', 'haptics'),
       h(
         'div',
         { class: 'setting' },
@@ -210,6 +224,7 @@ function showSettings() {
 function startGame(theme: Theme, existing: GameState | null) {
   const state = existing ?? newGame(theme.id);
   save.saveGame(state);
+  audio.music(theme.id);
 
   let selected = 0;
   let rot = 0;
@@ -320,6 +335,7 @@ function startGame(theme: Theme, existing: GameState | null) {
       // 預覽的地塊浮在半空中，點在它身上就算點同一格（旋轉）
       if (preview && board.hitsPreview(x, y)) {
         rot = (rot + 1) % 6;
+        audio.rotate();
         vibrate(8);
         refreshUI();
         return;
@@ -328,12 +344,15 @@ function startGame(theme: Theme, existing: GameState | null) {
       if (hex && canPlace(state, hex)) {
         if (preview && key(preview) === key(hex)) {
           rot = (rot + 1) % 6;
+          audio.rotate();
         } else {
           preview = hex;
           rot = bestRotation(state, hex, card.edges, rot);
+          audio.preview();
         }
         vibrate(8);
       } else {
+        if (preview) audio.cancel();
         preview = null;
       }
       refreshUI();
@@ -374,16 +393,19 @@ function startGame(theme: Theme, existing: GameState | null) {
     rot = 0;
     const card = state.hand[selected];
     if (preview && card) rot = bestRotation(state, preview, card.edges, 0);
+    audio.select();
     vibrate(8);
     refreshUI();
   }
 
   function rotate() {
     rot = (rot + 1) % 6;
+    audio.rotate();
     refreshUI();
   }
 
   function cancelPreview() {
+    audio.cancel();
     preview = null;
     refreshUI();
   }
@@ -397,9 +419,12 @@ function startGame(theme: Theme, existing: GameState | null) {
     rot = 0;
     selected = Math.min(selected, Math.max(0, state.hand.length - 1));
     vibrate(res.perfect ? 40 : 15);
+    audio.place(res.matches, res.perfect);
+    if (res.newStation) audio.station();
     const eraBefore = Board3D.eraOf({ ...state, board: Object.fromEntries(Object.entries(state.board).filter(([k]) => k !== key(hex))) });
     const eraAfter = Board3D.eraOf(state);
     const vehicle = eraAfter > eraBefore ? board.vehicleOfEra(eraAfter) : undefined;
+    if (vehicle) audio.era();
     if (vehicle && settings.quality !== 'low') toast(t(`toast.vehicle.${vehicle}` as StringKey));
     else if (res.perfect) toast(t('toast.perfect', { n: res.points }));
     else if (res.newStation) toast(t('toast.station', { n: stationOf(state).station }));
@@ -407,7 +432,10 @@ function startGame(theme: Theme, existing: GameState | null) {
       const isBest = save.submitScore(theme.id, state.score);
       save.clearGame(theme.id);
       refreshUI();
-      setTimeout(() => showGameOver(isBest), 650);
+      setTimeout(() => {
+        audio.gameOver();
+        showGameOver(isBest);
+      }, 650);
     } else {
       save.saveGame(state);
       refreshUI();
@@ -456,7 +484,13 @@ function startGame(theme: Theme, existing: GameState | null) {
           dealt.add(c.id);
           const delay = dealIndex++ * DEAL_STAGGER;
           inner.style.visibility = 'hidden';
-          toDeal.push(() => dealFx.play(c.id, btn, front, back, delay, () => vibrate(25), () => refreshUI()));
+          toDeal.push(() => {
+            setTimeout(() => audio.dealSlide(), delay * 1000);
+            dealFx.play(c.id, btn, front, back, delay, () => {
+              audio.dealSlap();
+              vibrate(25);
+            }, () => refreshUI());
+          });
         } else if (dealFx.isDealing(c.id)) {
           inner.style.visibility = 'hidden';
         }

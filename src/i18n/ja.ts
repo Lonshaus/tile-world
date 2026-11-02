@@ -49,6 +49,8 @@ export const ja: Dict = {
   'pause.menu': 'メニューへ（自動保存）',
   'settings.title': '設定',
   'settings.language': '言語',
+  'settings.music': '音楽',
+  'settings.sfx': '効果音',
   'settings.haptics': '振動',
   'settings.on': 'オン',
   'settings.off': 'オフ',
