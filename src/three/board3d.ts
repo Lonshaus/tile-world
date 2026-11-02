@@ -86,8 +86,7 @@ export class Board3D {
     if (this.waterMat.normalMap) this.waterMat.normalMap.offset.set(time * 0.03, time * 0.018);
     this.waterLife?.update(time);
     // 相接邊界的光慢慢呼吸
-    this.glowMat.opacity = 0.7 + 0.3 * Math.sin(time * 3.5);
-    this.curtainMat.opacity = 0.45 + 0.25 * Math.sin(time * 3.5);
+    this.glowMat.opacity = 0.6 + 0.2 * Math.sin(time * 2.5);
   }
 
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
@@ -435,62 +434,31 @@ export class Board3D {
   private ghostRingGeo = new THREE.RingGeometry(0.86, 1.02, 6, 1, Math.PI / 6).rotateX(-Math.PI / 2);
   private ghostRingMat = new THREE.MeshBasicMaterial({ color: '#fff8e8', transparent: true, opacity: 0.95, depthWrite: false });
   // 相接邊界的光帶：沿著邊長、中間最亮往兩側淡出
-  private glowGeo = new THREE.PlaneGeometry(1, 0.2).rotateX(-Math.PI / 2);
-  private curtainGeo = new THREE.PlaneGeometry(0.9, 1).translate(0, 0.5, 0);
-  private curtainMat = new THREE.MeshBasicMaterial({
-    color: '#fff1b8',
-    map: (() => {
-      const c = document.createElement('canvas');
-      c.width = 64;
-      c.height = 32;
-      const g = c.getContext('2d')!;
-      const grad = g.createLinearGradient(0, 32, 0, 0);
-      grad.addColorStop(0, 'rgba(255,255,255,0.9)');
-      grad.addColorStop(1, 'rgba(255,255,255,0.15)');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 64, 32);
-      g.globalCompositeOperation = 'destination-in';
-      const end = g.createLinearGradient(0, 0, 64, 0);
-      end.addColorStop(0, 'rgba(0,0,0,0)');
-      end.addColorStop(0.2, 'rgba(0,0,0,1)');
-      end.addColorStop(0.8, 'rgba(0,0,0,1)');
-      end.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = end;
-      g.fillRect(0, 0, 64, 32);
-      return new THREE.CanvasTexture(c);
-    })(),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    fog: false,
-  });
+  private glowGeo = new THREE.PlaneGeometry(0.86, 0.07).rotateX(-Math.PI / 2);
   private glowMat = new THREE.MeshBasicMaterial({
-    color: '#fff1b8',
+    color: '#ffffff',
     map: (() => {
       const c = document.createElement('canvas');
       c.width = 64;
-      c.height = 32;
+      c.height = 16;
       const g = c.getContext('2d')!;
-      const grad = g.createLinearGradient(0, 0, 0, 32);
+      const grad = g.createLinearGradient(0, 0, 0, 16);
       grad.addColorStop(0, 'rgba(255,255,255,0)');
       grad.addColorStop(0.5, 'rgba(255,255,255,1)');
       grad.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grad;
-      g.fillRect(0, 0, 64, 32);
-      // 兩端也淡出，不會有硬邊
+      g.fillRect(0, 0, 64, 16);
       g.globalCompositeOperation = 'destination-in';
       const end = g.createLinearGradient(0, 0, 64, 0);
       end.addColorStop(0, 'rgba(0,0,0,0)');
-      end.addColorStop(0.12, 'rgba(0,0,0,1)');
-      end.addColorStop(0.88, 'rgba(0,0,0,1)');
+      end.addColorStop(0.15, 'rgba(0,0,0,1)');
+      end.addColorStop(0.85, 'rgba(0,0,0,1)');
       end.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = end;
-      g.fillRect(0, 0, 64, 32);
+      g.fillRect(0, 0, 64, 16);
       return new THREE.CanvasTexture(c);
     })(),
     transparent: true,
-    blending: THREE.AdditiveBlending,
     depthWrite: false,
     fog: false,
   });
@@ -504,22 +472,16 @@ export class Board3D {
       if (nb.edges[opposite(d)] !== edges[d]) continue;
       const a = corner(d, 1);
       const b = corner(d + 1, 1);
-      const mx = c.x + (a.x + b.x) / 2;
-      const mz = c.y + (a.y + b.y) / 2;
-      const ang = -Math.atan2(b.y - a.y, b.x - a.x);
-      const top = BASE_TOP + this.theme.heights[edges[d]];
-      // 鄰居那側的邊緣亮起來（往外偏一點，不被浮著的預覽擋住）
+      // 細細一條柔和的白線，貼在鄰居那側的邊緣上
       const glow = new THREE.Mesh(this.glowGeo, this.glowMat);
-      glow.position.set(mx + ((a.x + b.x) / 2) * 0.08, top + 0.02, mz + ((a.y + b.y) / 2) * 0.08);
-      glow.rotation.y = ang;
+      glow.position.set(
+        c.x + ((a.x + b.x) / 2) * 1.04,
+        BASE_TOP + this.theme.heights[nb.edges[opposite(d)]] + 0.012,
+        c.y + ((a.y + b.y) / 2) * 1.04,
+      );
+      glow.rotation.y = -Math.atan2(b.y - a.y, b.x - a.x);
       glow.renderOrder = 2;
-      // 從鄰居的邊往上連到預覽地塊的一道光，看得出這兩條邊接在一起
-      const curtain = new THREE.Mesh(this.curtainGeo, this.curtainMat);
-      curtain.position.set(mx, top, mz);
-      curtain.scale.y = GHOST_LIFT + 0.05;
-      curtain.rotation.y = ang;
-      curtain.renderOrder = 2;
-      this.markers.add(glow, curtain);
+      this.markers.add(glow);
     }
   }
 }
