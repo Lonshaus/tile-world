@@ -157,20 +157,6 @@ export function evaluate(state: GameState, h: Hex, edges: readonly Terrain[]): E
   return { neighbors, matches, perfect, points: matches + (perfect ? PERFECT_BONUS : 0) };
 }
 
-/** 找出得分最高的旋轉；同分時優先保留 preferred */
-export function bestRotation(state: GameState, h: Hex, edges: readonly Terrain[], preferred = 0): number {
-  let best = preferred;
-  let bestPts = evaluate(state, h, rotateEdges(edges, preferred)).points;
-  for (let r = 0; r < 6; r++) {
-    const pts = evaluate(state, h, rotateEdges(edges, r)).points;
-    if (pts > bestPts) {
-      best = r;
-      bestPts = pts;
-    }
-  }
-  return best;
-}
-
 export interface PlaceResult extends Evaluation {
   newStation: boolean;
 }

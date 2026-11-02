@@ -1,7 +1,6 @@
 import './style.css';
 import {
   GameState,
-  bestRotation,
   canPlace,
   evaluate,
   newGame,
@@ -347,7 +346,6 @@ function startGame(theme: Theme, existing: GameState | null) {
           audio.rotate();
         } else {
           preview = hex;
-          rot = bestRotation(state, hex, card.edges, rot);
           audio.preview();
         }
         vibrate(8);
@@ -391,8 +389,6 @@ function startGame(theme: Theme, existing: GameState | null) {
     }
     selected = i;
     rot = 0;
-    const card = state.hand[selected];
-    if (preview && card) rot = bestRotation(state, preview, card.edges, 0);
     audio.select();
     vibrate(8);
     refreshUI();
