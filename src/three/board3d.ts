@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GameState, Terrain, rotateEdges } from '../game';
 import { Hex, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex } from '../hex';
 import type { Theme } from '../themes/types';
-import { BASE_TOP, buildTileGeometry, regionTopGeometry } from './geom';
+import { BASE_TOP, buildTileGeometry, regionOf, regionTopGeometry } from './geom';
 import { makeGrainTexture } from './wood';
 import { ERA_THRESHOLDS, Traffic } from './ambient';
 import { Ambient, Ufo } from './wildlife';
@@ -86,7 +86,9 @@ export class Board3D {
     if (this.waterMat.normalMap) this.waterMat.normalMap.offset.set(time * 0.03, time * 0.018);
     this.waterLife?.update(time);
     // 同類型區域的微光慢慢呼吸
-    this.shimmerMat.opacity = 0.1 + 0.1 * (0.5 + 0.5 * Math.sin(time * 2.6));
+    // 一明一暗地閃爍微光（約 1.4 秒一次）
+    const pulse = 0.5 + 0.5 * Math.sin(time * 4.5);
+    this.shimmerMat.opacity = 0.03 + 0.22 * pulse * pulse;
   }
 
   constructor(readonly canvas: HTMLCanvasElement, private theme: Theme, quality: Quality) {
@@ -444,19 +446,31 @@ export class Board3D {
     fog: false,
   });
 
+  /** 同類型相接時，預覽地塊和鄰居地塊上接在一起的那兩片同地形區域都微微閃爍 */
   private buildMarkers(state: GameState, hex: Hex, edges: Terrain[]) {
+    const c = hexToPixel(hex, 1);
+    const ghostRegions = new Set<number>();
+    const add = (geo: THREE.BufferGeometry, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(geo, this.shimmerMat);
+      m.position.set(x, y, z);
+      m.renderOrder = 2;
+      this.markers.add(m);
+    };
     for (let d = 0; d < 6; d++) {
-      const nb = state.board[key(neighbor(hex, d))];
+      const k = key(neighbor(hex, d));
+      const nb = state.board[k];
       if (!nb) continue;
-      // 只標出同類型地形相接的：鄰居那塊同地形的區域整片微微閃爍
       const edge = opposite(d);
       if (nb.edges[edge] !== edges[d]) continue;
-      const k = key(neighbor(hex, d));
-      const region = new THREE.Mesh(regionTopGeometry(this.theme, nb.edges, edge), this.shimmerMat);
+      // 鄰居那片
       const p = hexToPixel(parseKey(k), 1);
-      region.position.set(p.x, 0, p.y);
-      region.renderOrder = 2;
-      this.markers.add(region);
+      add(regionTopGeometry(this.theme, nb.edges, edge), p.x, 0, p.y);
+      // 預覽地塊那片（同一片接到好幾個鄰居時只加一次）
+      const r = regionOf(edges, d);
+      if (!ghostRegions.has(r)) {
+        ghostRegions.add(r);
+        add(regionTopGeometry(this.theme, edges, d), c.x, GHOST_LIFT, c.y);
+      }
     }
   }
 }

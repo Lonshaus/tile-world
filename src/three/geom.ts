@@ -195,6 +195,11 @@ function addDecor(b: Builder, p: DecorPiece, ax: number, ay: number, az: number)
  * 某條邊所在、同一種地形連成一片的那塊地形板頂面（平的多邊形），
  * 給「同類型相接」時整塊微微閃爍用。座標是地塊本身的區域座標。
  */
+/** 某條邊屬於哪一片同地形區域（回傳那片區域的起始邊，用來判斷是不是同一片） */
+export function regionOf(edges: readonly Terrain[], edge: number): number {
+  return segments(edges).find(([d, k]) => (edge - d + 6) % 6 < k)![0];
+}
+
 export function regionTopGeometry(theme: Theme, edges: readonly Terrain[], edge: number): THREE.BufferGeometry {
   const seg = segments(edges).find(([d, k]) => ((edge - d + 6) % 6) < k)!;
   const [d, k, terrain] = seg;
