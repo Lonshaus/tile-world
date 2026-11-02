@@ -8,6 +8,7 @@ import {
   placeTile,
   placeableCells,
   rotateEdges,
+  tileSeed,
   stationOf,
   tilesLeft,
 } from './game';
@@ -287,7 +288,7 @@ function startGame(theme: Theme, existing: GameState | null) {
     board.render({
       state,
       highlights: !viewingOnly && card && !preview ? placeableCells(state) : [],
-      preview: preview && card ? { hex: preview, edges: rotateEdges(card.edges, rot), id: `${key(preview)}|${card.id}|${rot}` } : null,
+      preview: preview && card ? { hex: preview, edges: rotateEdges(card.edges, rot), seed: tileSeed(card), rot, id: `${key(preview)}|${card.id}|${rot}` } : null,
       pop: popT,
     });
     if (pop || board.animated) requestRender();
@@ -438,9 +439,9 @@ function startGame(theme: Theme, existing: GameState | null) {
     handEl.replaceChildren(
       ...state.hand.map((c, i) => {
         const front = h('canvas', { class: 'card-face', width: CARD_W, height: CARD_H });
-        const edges = rotateEdges(c.edges, i === selected ? rot : 0);
-        const art = board.tileArt(edges, c.id * 7919, CARD_W, Math.round(CARD_H * 0.52));
-        drawPlayingCard(front, art, theme.sky, cardText(theme, c.edges), c.id * 7919);
+        const r = i === selected ? rot : 0;
+        const art = board.tileArt(rotateEdges(c.edges, r), tileSeed(c), r, CARD_W, Math.round(CARD_H * 0.52));
+        drawPlayingCard(front, art, theme.sky, cardText(theme, c.edges), tileSeed(c));
         const back = h('canvas', { class: 'card-face card-back', width: CARD_W, height: CARD_H });
         back.getContext('2d')!.drawImage(cardBackImage(), 0, 0);
         const inner = h('div', { class: 'card-inner' }, front, back);

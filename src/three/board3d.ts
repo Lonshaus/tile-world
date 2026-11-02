@@ -1,6 +1,6 @@
 // three.js 地圖：地塊、可放置格、預覽、鏡頭（平移／縮放／旋轉）
 import * as THREE from 'three';
-import { GameState, Terrain } from '../game';
+import { GameState, Terrain, rotateEdges } from '../game';
 import { Hex, corner, hexToPixel, key, neighbor, opposite, parseKey, pixelToHex } from '../hex';
 import type { Theme } from '../themes/types';
 import { BASE_TOP, buildTileGeometry } from './geom';
@@ -19,7 +19,7 @@ const QUALITY: Record<Quality, { ratio: number; shadow: number; aa: boolean }> =
 export interface BoardInput {
   state: GameState;
   highlights: Hex[];
-  preview: { hex: Hex; edges: Terrain[]; id: string } | null;
+  preview: { hex: Hex; edges: Terrain[]; seed: number; rot: number; id: string } | null;
   pop: { hex: Hex; t: number } | null;
 }
 
@@ -252,9 +252,9 @@ export class Board3D {
   private art: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; holder: THREE.Group } | null = null;
   private artCache = new Map<string, HTMLCanvasElement>();
 
-  tileArt(edges: readonly Terrain[], seed: number, w: number, h: number): HTMLCanvasElement {
+  tileArt(edges: readonly Terrain[], seed: number, rot: number, w: number, h: number): HTMLCanvasElement {
     const az = Math.round(this.azimuth * 20) / 20;
-    const cacheKey = `${edges.join('')}|${seed}|${az}|${w}x${h}`;
+    const cacheKey = `${edges.join('')}|${seed}|${rot}|${az}|${w}x${h}`;
     const hit = this.artCache.get(cacheKey);
     if (hit) return hit;
 
@@ -278,7 +278,7 @@ export class Board3D {
       holder.remove(c);
       this.disposeGroup(c as THREE.Group);
     }
-    holder.add(this.makeTile(edges, seed, false));
+    holder.add(this.makeTile(edges, seed, false, rot));
 
     camera.aspect = w / h;
     const d = 3.7;
@@ -323,16 +323,23 @@ export class Board3D {
 
   // ── 場景同步 ──
 
-  private makeTile(edges: readonly Terrain[], seed: number, ghost: boolean): THREE.Group {
+  /**
+   * edges 是轉好之後的六個邊。先用沒轉過的邊建模型、再整塊轉 rot 格，
+   * 建築擺設才會跟著一起轉，而不是每次轉完重新擺。
+   */
+  private makeTile(edges: readonly Terrain[], seed: number, ghost: boolean, rot = 0): THREE.Group {
     const g = new THREE.Group();
-    const geo = buildTileGeometry(this.theme, edges, seed);
+    const inner = new THREE.Group();
+    inner.rotation.y = (-rot * Math.PI) / 3;
+    g.add(inner);
+    const geo = buildTileGeometry(this.theme, rotateEdges(edges, (6 - (rot % 6)) % 6), seed);
     const solid = new THREE.Mesh(geo.solid, ghost ? this.ghostSolid : this.solidMat);
     solid.castShadow = solid.receiveShadow = !ghost;
-    g.add(solid);
+    inner.add(solid);
     if (geo.water) {
       const water = new THREE.Mesh(geo.water, ghost ? this.ghostWater : this.waterMat);
       water.receiveShadow = !ghost;
-      g.add(water);
+      inner.add(water);
     }
     return g;
   }
@@ -349,7 +356,7 @@ export class Board3D {
     // 地塊：新增缺的、移除多的（重新開局時）
     for (const [k, tile] of Object.entries(state.board)) {
       if (this.tiles.has(k)) continue;
-      const g = this.makeTile(tile.edges, tile.seed, false);
+      const g = this.makeTile(tile.edges, tile.seed, false, tile.rot ?? 0);
       const p = hexToPixel(parseKey(k), 1);
       g.position.set(p.x, 0, p.y);
       this.waterLife?.addTile(p.x, p.y, tile.edges, tile.seed);
@@ -406,7 +413,7 @@ export class Board3D {
       this.markers.clear();
       this.ghostId = '';
       if (pv) {
-        this.ghost = this.makeTile(pv.edges, 777, true);
+        this.ghost = this.makeTile(pv.edges, pv.seed, true, pv.rot);
         const p = hexToPixel(pv.hex, 1);
         this.ghost.position.set(p.x, GHOST_LIFT, p.y);
         // 落點的白色外框，讓預覽位置一眼就看得出來

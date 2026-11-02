@@ -26,8 +26,10 @@ export interface TileCard {
 
 export interface PlacedTile {
   edges: Terrain[];
-  /** 用來決定裝飾圖案的固定種子 */
+  /** 用來決定裝飾圖案的固定種子（跟卡牌插圖、預覽相同） */
   seed: number;
+  /** 放下時轉了幾格（整塊連建築一起轉；舊存檔沒有這欄就當 0） */
+  rot?: number;
 }
 
 export interface GameState {
@@ -49,6 +51,11 @@ export interface Evaluation {
   matches: number;
   perfect: boolean;
   points: number;
+}
+
+/** 卡牌對應的裝飾種子：卡牌插圖、預覽、放下後都用同一個，看起來才會一樣 */
+export function tileSeed(card: TileCard): number {
+  return card.id * 7919;
 }
 
 export function rotateEdges(edges: readonly Terrain[], rot: number): Terrain[] {
@@ -173,9 +180,7 @@ export function placeTile(state: GameState, handIndex: number, h: Hex, rot: numb
   if (!card || !canPlace(state, h)) throw new Error('invalid placement');
   const edges = rotateEdges(card.edges, rot);
   const ev = evaluate(state, h, edges);
-  const rng = new Rng(state.rng);
-  state.board[key(h)] = { edges, seed: rng.int(1e9) };
-  state.rng = rng.state;
+  state.board[key(h)] = { edges, seed: tileSeed(card), rot };
   state.hand.splice(handIndex, 1);
   state.score += ev.points;
   state.placed++;
