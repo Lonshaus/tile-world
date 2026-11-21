@@ -1,4 +1,4 @@
-# Pinpin World (拼拼世界)
+# Tile World
 
 English | [繁體中文](README.ZH_TW.md)
 
